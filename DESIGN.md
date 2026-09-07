@@ -188,9 +188,10 @@ the same numbers is always reachable — the fallback for anyone the colours fai
   of every card.
 - **Paper grain** — a faint SVG noise overlay on the pink, ~2% opacity. *Not yet
   implemented.*
-- **Hatching** — 45° diagonal lines for voided categories and disallowed
-  entries. Functional, not decorative: it reads as struck out without colour,
-  including in print. (`.hatched`)
+- **Hatching** — 45° diagonal lines for categories won by Nobody, and for
+  disallowed entries. Functional, not decorative: it reads as struck out without
+  colour, including in print. A category the GM hasn't reached yet is left
+  plainly blank instead — the two states must not look alike. (`.hatched`)
 - **Stitch borders** — a dashed hairline for provisional things: an unconfirmed
   entry, a pending result.
 

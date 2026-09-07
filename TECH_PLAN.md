@@ -111,6 +111,9 @@ handshake (+2), winner (+5)`. Changing what Star Baker is worth is a row update,
 not a deploy.
 
 **`episode_results`** — `id, episode_id, category, baker_id, voided, entered_at`
+`voided` is what the UI calls **Nobody**: a row with no baker, meaning the
+category happened to no one and pays no one. A category the GM hasn't reached
+yet has no row at all — a different state, shown differently.
 **Several rows per category are legal and expected** — two bakers going home, two
 handshakes, a bingo event that hits three people.
 
@@ -125,7 +128,7 @@ five baker columns. This is the decision everything else leans on:
   three `bingo` ones, and naming any of them matches — wrapped in `DISTINCT` so
   you score **once**, not once per matching baker. That's RULES §3 implemented by
   the shape of the table rather than by special cases.
-- **Voiding** is one boolean on one row.
+- **Nobody** is one boolean on one row.
 - Adding a sixth category one series is a data change, not a migration.
 
 The cost is that "show me my week" needs a small pivot in the UI. Cheap.
@@ -247,7 +250,8 @@ people will be watching on the sofa with their phone in hand, so this is
 - **Leaderboard** — avatar, colour, total, this-week's points, position arrows.
   The default view on a narrow screen.
 - **This week's results grid** — the five categories with the winning baker's
-  face, filling in live. Voided categories struck through.
+  face, filling in live. Categories won by Nobody struck through; ones the GM
+  hasn't reached yet left blank.
 - **Prediction wall** — everyone's picks, ticking green/red as results land, with
   LATE / VERY LATE flags next to names. The bit people will shout at.
 - **Series recap** — episodes × categories, who won what.
@@ -288,8 +292,14 @@ Password once, then tabs:
 
 - **Live** — the episode-night screen. Pick a category, pick a baker, done. Big
   buttons, works on a phone from the sofa. **Add another winner** for the weeks
-  with two of something, and a **Void** switch per category. Four taps per
-  result. This is the only screen you touch during an episode.
+  with two of something. Four taps per result. This is the only screen you touch
+  during an episode.
+
+  Each dropdown has three states: *not decided yet* (no row), **Nobody** (the
+  void — nothing happened, so nobody scores), and the bakers. Nobody is chosen
+  like any other answer rather than through a separate switch, because on the
+  night the question is always "who won this?" and *nobody* is a real answer to
+  it. Players never see Nobody as an option — it exists only for recording.
 - **Episodes** — theme, air date, deadline, **bingo prompt**, and the
   `upcoming → locked → live → complete` status. "Go live" is the hard lock.
 - **Entries** — every entry with its lateness flag, the **Disallow** checkbox,
@@ -322,7 +332,7 @@ now > live_at, gm_unlocked_at is set     → very_late
 **`POST /api/gm`** — body carries the GM password, checked against
 `process.env.GM_PASSWORD` on every call (no sessions, no tokens — same as
 worm-street).
-`setResult` · `addResult` · `voidCategory` · `setEpisode` · `goLive` ·
+`setResult` · `addResult` · `clearResult` · `setNobody` · `setEpisode` · `goLive` ·
 `setBingoPrompt` · `toggleDisallow` · `unlockEntry` · `upsertPlayer` ·
 `upsertBaker` · `createLeague` · `generateCode`
 

@@ -13,7 +13,7 @@ export default function Gm() {
       <h1>GM panel</h1>
       <p className="muted">Phase 3. Password, then tabs:</p>
       <ul className="stub-list">
-        <li><strong>Live</strong> — enter results as the episode airs, void a category</li>
+        <li><strong>Live</strong> — enter results as the episode airs; each category takes a baker, several bakers, or Nobody</li>
         <li><strong>Episodes</strong> — theme, deadline, bingo prompt, go live</li>
         <li><strong>Entries</strong> — lateness flags, Disallow, open the door</li>
         <li><strong>Players</strong> — codes and colours</li>

@@ -172,10 +172,18 @@ create table if not exists episode_results (
   episode_id uuid not null references episodes(id) on delete cascade,
   category   text not null references categories(key),
   baker_id   uuid references bakers(id) on delete cascade,
+  -- `voided` is what the UI calls "Nobody". The GM never flips a switch: they
+  -- pick Nobody from the same dropdown as a baker, because on the night the
+  -- question is always "who won this?" and nobody is a real answer to it. Same
+  -- row, friendlier word — RULES §3.
   voided     boolean not null default false,
   entered_at timestamptz not null default now(),
-  -- A void is one row with no baker. A result is a row with a baker and no
-  -- void. Nothing else is a valid shape.
+  -- Nobody is one row with no baker. A result is a row with a baker and no
+  -- void flag. Nothing else is a valid shape.
+  --
+  -- Note what has NO row at all: a category the GM has not reached yet. "Nobody
+  -- won it" and "not decided yet" are different states and the dashboard shows
+  -- them differently, so do not let the UI collapse them.
   constraint result_shape check (
     (voided and baker_id is null) or (not voided and baker_id is not null)
   )
@@ -189,8 +197,9 @@ create unique index if not exists results_unique_winner
 create unique index if not exists results_one_void
   on episode_results (episode_id, category) where voided;
 
--- NOTE: that a category is either voided OR has winners — never both — is
--- enforced in api/gm.js (voiding deletes the winner rows), not declaratively.
+-- NOTE: that a category is either Nobody OR has winners — never both — is
+-- enforced in api/gm.js (choosing Nobody deletes the winner rows, and adding a
+-- winner deletes the Nobody row), not declaratively.
 -- If both somehow coexist, scoring treats the winners as live and ignores the
 -- void, because v_prediction_scores filters on `not voided`.
 

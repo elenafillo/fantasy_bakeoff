@@ -94,22 +94,28 @@ labelled:
 
 ## 3. Weeks that don't behave
 
-Real episodes break the neat five-category structure. The GM can **void** any
-category in any week — a voided category scores nothing for anyone, no points
-and no penalties, and is shown as voided on the dashboard.
+Real episodes break the neat five-category structure. When a category simply
+didn't happen, the GM records the winner as **Nobody** — and a category won by
+Nobody scores nothing for anyone: no points, no penalties. The dashboard shows
+it as *Nobody*, struck through.
 
 | What happened | How it's handled |
 |---------------|------------------|
-| **Nobody goes home** (withdrawal, cancelled elimination) | *Leaving Baker* is voided. The Best-Baker-left penalty cannot fire. |
+| **Nobody goes home** (withdrawal, cancelled elimination) | *Leaving Baker* goes to **Nobody**. The Best-Baker-left penalty cannot fire. |
 | **Two bakers go home** | Naming *either* of them scores the full **+3**. Not +6 — one correct call, one prize. |
-| **No handshake given** | *Handshake* is voided. |
+| **No handshake given** | *Handshake* goes to **Nobody**. |
 | **Several handshakes** | Naming *any* recipient scores **+2**. Once, not per handshake. |
-| **The bingo thing never happens** | *Bingo Bonus* is voided. |
+| **The bingo thing never happens** | *Bingo Bonus* goes to **Nobody**. |
 | **The bingo thing happens to several bakers** | Naming *any* of them scores **+2**. Once, not per baker. |
-| **No Star Baker awarded** | *Best Baker* is voided. |
+| **No Star Baker awarded** | *Best Baker* goes to **Nobody**. |
 
-"No handshake this week" is **not** something you can pick — in a handshake-free
-week the category is simply voided and nobody scores.
+**Nobody is not something you can pick.** It only exists on the GM's side, for
+recording what happened. In a handshake-free week you don't get points for having
+foreseen it — the category just pays nobody.
+
+"Nobody won it" and "not decided yet" are different things, and the dashboard
+shows them differently. Mid-episode a category the GM hasn't reached yet is
+blank; one that went to Nobody is settled and struck through.
 
 ---
 
@@ -178,7 +184,8 @@ If that somehow doesn't separate them, it's a shared title.
   until the deadline passes. After that they're all public.
 - The GM is a player too, but the GM enters results *after* the deadline has
   locked their own entry like everybody else's.
-- The GM's rulings on the Bingo Bonus, and on voiding categories, are final.
+- The GM's rulings on the Bingo Bonus, and on whether a category went to Nobody,
+  are final.
 - Spoilers from press, leaks or the future are, obviously, out.
 
 ---
@@ -211,7 +218,7 @@ EVERY WEEK                          END OF SERIES
 | Question | Settled as |
 |----------|------------|
 | Hard lock when the episode starts airing? | **Yes, by default** — GM can open the door per player, per week, stamped VERY LATE |
-| "No handshake this week" as a pick? | **No** — handshake-free weeks are voided |
+| "No handshake this week" as a pick? | **No** — the GM records the handshake as going to **Nobody**, and it pays no one |
 | Bingo: first baker it happens to, or all of them? | **All** — everyone who named a correct baker scores |
 | Final week card | **Winner +5**, no Leaving Baker, no penalty |
 | Top three revealed when? | **Start of episode 2**, then shown all series |

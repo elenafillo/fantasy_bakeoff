@@ -116,9 +116,25 @@ flesh out `src/pages/Gm.jsx` with tabs:
 
 - **Live** — the episode-night screen, and the one that deserves the most care.
   Pick a category, pick a baker, done. Four taps per result, big touch targets,
-  works one-handed on a phone from a sofa. Needs **Add another winner** (two
-  eliminations, two handshakes, a bingo that catches three people are all normal)
-  and a **Void** switch per category.
+  works one-handed on a phone from a sofa. Needs **Add another winner** — two
+  eliminations, two handshakes, a bingo that catches three people are all normal.
+
+  Each category's dropdown carries **three** states, and the separation matters:
+
+  ```
+  — not decided yet —   no row.  Dashboard: blank, still to come
+  — Nobody —            void row. Dashboard: "Nobody", struck through
+  Baker One …           a winner
+  ```
+
+  There is no separate Void switch: **Nobody is the void**, chosen the same way
+  a winner is. The GM's mental model on the night is "who won this?", and
+  "nobody" is a legitimate answer to that question — a second control for it is
+  a control to hunt for at speed.
+
+  Keeping *not decided yet* distinct from *Nobody* is the load-bearing part.
+  Collapse them and clearing a mistaken pick silently voids the category — a
+  mistake made at speed, mid-episode, and not noticed.
 - **Episodes** — theme, air date, deadline, bingo prompt, and the
   `upcoming → locked → live → complete` status. "Go live" stamps `live_at`,
   which is the hard lock.
@@ -130,14 +146,15 @@ flesh out `src/pages/Gm.jsx` with tabs:
   eliminations, set `finalist` / `winner` at the end.
 - **Leagues** — later; one league is enough for now.
 
-Endpoints sketched in TECH_PLAN §6: `setResult · addResult · voidCategory ·
-setEpisode · goLive · setBingoPrompt · toggleDisallow · unlockEntry ·
-upsertPlayer · upsertBaker · createLeague · generateCode`.
+Endpoints sketched in TECH_PLAN §6: `setResult · addResult · clearResult ·
+setNobody · setEpisode · goLive · setBingoPrompt · toggleDisallow ·
+unlockEntry · upsertPlayer · upsertBaker · createLeague · generateCode`.
 
 Two invariants the API must hold that the schema does not:
 
-- **A category is either voided or has winners, never both.** `voidCategory`
-  must delete the winner rows. If both exist, scoring silently ignores the void
+- **A category is either Nobody or has winners, never both.** Choosing Nobody
+  must delete the winner rows, and adding a winner must delete the Nobody row.
+  If both exist, scoring silently ignores the Nobody row
   (`v_prediction_scores` filters on `not voided`).
 - **Setting a baker to `eliminated` should set `eliminated_episode`.**
   `v_baker_stats.weeks_survived` reads it.
