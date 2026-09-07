@@ -1,0 +1,142 @@
+/* ============================================================
+   Fantasy Bake Off — base styles
+   ============================================================
+   Mobile first. Most people read this on a phone on the sofa; the wide layout
+   is the enhancement. No dark mode on purpose — it's a display for a lit room.
+   Player colours come from the database and are applied inline, never here. */
+
+:root {
+  --paper: #fdfaf5;
+  --card: #ffffff;
+  --ink: #33302c;
+  --ink-soft: #7b7369;
+  --line: #e8e0d4;
+
+  /* Tints — large areas only. Never a chart line. See DESIGN.md §2. */
+  --pink: #e8a0b0;
+  --sage: #a8bfa0;
+  --sky: #9fbdd4;
+  --butter: #f2d9a0;
+
+  /* Reserved: "the episode is airing", and LATE / VERY LATE. Nothing else. */
+  --live: #d1495b;
+
+  /* Series hues — the only colours that draw a chart line, in this order.
+     Validated all-pairs against --paper under protanopia and deuteranopia.
+     A fifth breaks it (red vs orange, ΔE 7.1 to ordinary vision), which is why
+     the chart highlights at most four players at once. Re-run the check in
+     DESIGN.md §3 before changing any of these. */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #4a3aa7;
+  --line-muted: #ddd6ca;
+
+  --radius: 14px;
+  --pad: 1rem;
+  --max: 68rem;
+
+  --font-display: 'Georgia', 'Iowan Old Style', 'Times New Roman', serif;
+  --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-text-size-adjust: 100%;
+}
+
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.2; }
+h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
+h2 { font-size: 1.2rem; margin: 0 0 .5rem; }
+
+a { color: inherit; }
+
+/* ---- Shell ---- */
+
+.shell { max-width: var(--max); margin: 0 auto; padding: 0 var(--pad) 4rem; }
+
+.topbar {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 1.5rem;
+}
+.topbar-inner {
+  max-width: var(--max); margin: 0 auto;
+  padding: .75rem var(--pad);
+  display: flex; align-items: baseline; gap: 1rem;
+  flex-wrap: wrap;
+}
+.brand {
+  font-family: var(--font-display);
+  font-size: 1.05rem; font-weight: 600;
+  letter-spacing: .01em; text-decoration: none;
+  white-space: nowrap;
+}
+.brand em { font-style: normal; color: var(--pink); }
+
+.nav { display: flex; gap: .25rem; margin-left: auto; }
+.nav a {
+  text-decoration: none;
+  font-size: .78rem; font-weight: 600;
+  letter-spacing: .09em; text-transform: uppercase;
+  color: var(--ink-soft);
+  padding: .3rem .55rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.nav a:hover { color: var(--ink); background: #00000008; }
+.nav a[aria-current='page'] { color: var(--ink); background: var(--butter); }
+
+/* ---- Cards ---- */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.15rem;
+  margin-bottom: 1rem;
+}
+.card > :first-child { margin-top: 0; }
+.card > :last-child { margin-bottom: 0; }
+
+.muted { color: var(--ink-soft); }
+.small { font-size: .875rem; }
+
+.eyebrow {
+  font-size: .7rem; font-weight: 700;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-bottom: .35rem;
+}
+
+.stub-list { margin: .5rem 0 0; padding-left: 1.1rem; color: var(--ink-soft); }
+.stub-list li { margin: .2rem 0; }
+
+/* ---- Status pill (phase-0 connection check) ---- */
+
+.pill {
+  display: inline-flex; align-items: center; gap: .45rem;
+  font-size: .8rem; font-weight: 600;
+  padding: .3rem .7rem; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--paper);
+}
+.pill .dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--ink-soft); }
+.pill.ok .dot { background: var(--sage); }
+.pill.bad .dot { background: var(--live); }
+.pill.bad { border-color: var(--live); color: var(--live); }
+
+/* ---- Wide screens ---- */
+
+@media (min-width: 48rem) {
+  :root { --pad: 1.5rem; }
+  h1 { font-size: 2rem; }
+  .nav a { font-size: .8rem; padding: .3rem .7rem; }
+}
