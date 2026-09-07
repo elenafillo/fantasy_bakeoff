@@ -289,7 +289,11 @@ the link you want to point at — I don't want to guess at the attribution.)*
 
 ### The GM panel (`/gm`)
 
-Password once, then tabs:
+Password once per browser tab — it lives in `sessionStorage`, because unlike a
+player's two-word code this one string can rewrite every result in the game, and
+the panel gets opened on whatever device is to hand. A 401 asks for it again; a
+network hiccup does not, because throwing away a working password mid-episode
+means retyping it one-handed. Then tabs:
 
 - **Live** — the episode-night screen. Pick a category, pick a baker, done. Big
   buttons, works on a phone from the sofa. **Add another winner** for the weeks
@@ -305,6 +309,10 @@ Password once, then tabs:
   `upcoming → locked → live → complete` status. "Go live" is the hard lock.
 - **Entries** — every entry with its lateness flag, the **Disallow** checkbox,
   and **Open the door** to let one player submit late this week.
+
+  The GM plays too, so this tab shows how many picks each player has made and
+  not what they are, until the deadline passes. Same rule as
+  `v_public_predictions`, enforced in `api/gm.js` for the same reason.
 - **Players** — add players, issue codes, assign colour, per league.
 - **Bakers** — the cast, photos, bios, elimination status.
 - **Leagues** — create and manage parallel leagues; set the default.
@@ -333,9 +341,23 @@ now > live_at, gm_unlocked_at is set     → very_late
 **`POST /api/gm`** — body carries the GM password, checked against
 `process.env.GM_PASSWORD` on every call (no sessions, no tokens — same as
 worm-street).
-`setResult` · `addResult` · `clearResult` · `setNobody` · `setEpisode` · `goLive` ·
-`setBingoPrompt` · `toggleDisallow` · `unlockEntry` · `upsertPlayer` ·
-`upsertBaker` · `createLeague` · `generateCode`
+
+Built: `state` · `setCategory` · `setEpisode` · `goLive`.
+To come: `toggleDisallow` · `unlockEntry` · `upsertPlayer` · `upsertBaker` ·
+`generateCode` · `createLeague`.
+
+`setCategory` replaced the four verbs this section originally sketched
+(`setResult · addResult · clearResult · setNobody`). One request states a
+category's whole answer — `'undecided'`, `'nobody'`, or a list of winners — and
+the rows are made to match. The invariant that a category is either Nobody or
+has winners and never both then has no way to be violated; with four verbs each
+one would have to remember to undo the other kind. `setEpisode` absorbed
+`setBingoPrompt` for the same reason: one write, one shape.
+
+Every action returns the whole GM state, so the panel never has to guess what
+the database now holds — which matters most on the Live tab, where the GM makes
+a change every thirty seconds and is not checking whether the screen still
+agrees with reality.
 
 The dashboard, `/bakers` and `/rules` need **no endpoint at all** — they read the
 `v_*` views straight from Supabase with the anon key. That keeps serverless
@@ -451,7 +473,7 @@ before we're finished.
 | **0** | ✅ Repo scaffolded, Supabase project, deployed to Vercel, shell live | everything |
 | **1** | ✅ *written* — schema, views, RLS, seed, smoke test and the code generator in [supabase/](supabase/). **Not yet applied**: paste them in the order in [supabase/README.md](supabase/README.md). Bakers and air dates wait on the announcement. | 2, 3 |
 | **2** | ✅ `/play` — login, prediction panel, deadline countdown, Confirm, lateness | playable |
-| **3** | `/gm` — Episodes, Live results entry, Entries tab with Disallow and unlock | scoring |
+| **3** | 🟡 `/gm` — Live results entry and Episodes are done and deployed. Entries (Disallow, unlock), Players and Bakers remain. | scoring |
 | **4** | Scoring views wired up; standings on `/play` | 5 |
 | **5** | `/` dashboard — chart, leaderboard, results grid, prediction wall | showable |
 | **6** | `/bakers`, `/rules`, top-three picks and series bonuses, stats strip | — |

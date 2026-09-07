@@ -212,7 +212,18 @@ button's 3px edge.
 - **Pill** — status and flags. Always a dot *and* a word.
 - **Nav** — four short uppercase words, current one on white. Must fit one phone
   line without wrapping; that's what caps it at four.
+- **Tabs** — the nav's type at the nav's size, but pills on pink with the
+  current one filled `--btn`. They scroll sideways rather than wrap, because a
+  tab bar that reflows moves the tab you were aiming at. GM panel only.
+- **Quiet mini button** — pill, white, 2px `--line` outline, `--btn` text. For
+  the actions beside a control rather than under a form: Remove, Add another
+  winner, Cancel. Sized to a 44px target despite reading as secondary — small
+  and quiet are not the same thing.
 - **Numbers** — `tabular-nums` in any column that aligns vertically.
+
+The GM's Live tab sizes its selects up from the player panel's (1.05rem, more
+padding). Same component, different hand: `/play` is used once a week sitting
+down, Live is used at speed, one-handed, in a dark room.
 
 ---
 
