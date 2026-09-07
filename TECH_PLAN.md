@@ -489,8 +489,11 @@ Vercel hobby. A custom domain, if you ever want one, is ~£10/year — otherwise
 
 | # | Question |
 |---|----------|
-| 1 | **Series start date** — ten episodes confirmed; the date isn't announced yet, expected late September 2026. Episodes seed with numbers and a null `air_date`; dates fill in when announced. |
-| 2 | **Exact colophon wording** for `/rules`, and the link for "the official Fantasy Bake Off" |
-| 3 | League name and slug for the first league |
-| 4 | Roughly how many players? (Sets the palette size — 16 hues is comfortable, beyond ~20 they stop being distinguishable on a chart) |
-| 5 | Do you want to be a player as well as GM? Supported either way (`players.is_gm`) |
+| 1 | **Series start date** — ten episodes confirmed; the date isn't announced yet, expected late September 2026. Episodes are seeded with numbers and a null `air_date`; dates fill in when announced and the deadline follows automatically. |
+| 2 | **The cast** — twelve placeholder bakers are seeded so the panel works. Rename them when the real names land (keeps their ids, so test picks survive). |
+| 3 | **Exact colophon wording** for `/rules`, and the link for "the official Fantasy Bake Off" |
+| 4 | **How many players?** Sets the identity-palette size — 16 hues is comfortable, beyond ~20 they stop being tellable apart even beside a name. |
+| 5 | A display face for headings (DESIGN.md §9) — must be freely licensable |
+
+**Settled since v0.2:** the league is **In The Oven** (`in-the-oven`), and Elena
+is both GM and player (`players.is_gm`).

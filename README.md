@@ -4,20 +4,23 @@ A fantasy league for the Great British Bake Off. Players predict each week's Sta
 Baker, elimination, technical winner, handshake and a GM-written bingo event;
 points land live as the episode airs.
 
+- **[HANDOFF.md](HANDOFF.md)** — **start here.** State of play, what's next, and the traps
 - **[RULES.md](RULES.md)** — how the game is played and scored
 - **[TECH_PLAN.md](TECH_PLAN.md)** — architecture, data model, build phases
+- **[DESIGN.md](DESIGN.md)** — the visual system
+- **[supabase/README.md](supabase/README.md)** — SQL run order
 
 **Stack:** React + Vite · Supabase (Postgres) · Vercel
 
 ## Pages
 
-| Route | Who | Phase |
-|-------|-----|------:|
+| Route | Who | What | Phase |
+|-------|-----|------|------:|
 | `/` | anyone | Dashboard — your league if you're logged in, else the default one | 5 |
-| `/play` | player | Prediction panel, two-word code login | 2 |
+| `/play` | player | Prediction panel, two-word code login — **built** | 2 ✅ |
 | `/bakers` | anyone | The cast grid | 6 |
 | `/rules` | anyone | Short-form rules | 6 |
-| `/gm` | GM | Password-gated control room | 3 |
+| `/gm` | GM | Password-gated control room — **next** | 3 |
 
 ## Dev
 
