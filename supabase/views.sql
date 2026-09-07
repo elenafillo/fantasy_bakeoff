@@ -1,0 +1,310 @@
+-- ============================================================
+-- Fantasy Bake Off — views
+-- ============================================================
+-- Run after schema.sql, before rls.sql.
+--
+-- Scoring lives here and nowhere else. The dashboard, the leaderboard and the
+-- player's own panel all read these, so they cannot disagree — which is exactly
+-- the failure mode of computing the same rules in JavaScript in three places.
+--
+-- These views are the ONLY thing the browser's publishable key can read (see
+-- rls.sql). They are deliberately left as security-definer — the Postgres
+-- default — so that they can expose a filtered slice of tables the anon role
+-- has no access to at all. That is the point, not an oversight: every WHERE
+-- clause below is a permission boundary, so read them as such before editing.
+
+-- ------------------------------------------------------------
+-- Reference data
+-- ------------------------------------------------------------
+-- Nothing private in any of these, but they are views anyway so that the
+-- browser's read surface is exactly one kind of thing: a granted view. One
+-- mechanism means one place to audit, and no table is ever half-exposed by a
+-- column grant somebody forgets about.
+
+create or replace view v_seasons_public as
+select id, name, year, episode_count, is_active
+from seasons;
+
+create or replace view v_leagues_public as
+select id, season_id, name, slug, is_default
+from leagues
+where is_active;
+
+create or replace view v_categories_public as
+select key, label, points, sort_order, applies_to
+from categories;
+
+-- ------------------------------------------------------------
+-- Players, without their codes
+-- ------------------------------------------------------------
+-- The dashboard needs names, colours and avatars. It must never see code_norm,
+-- because a code IS the credential. Adding that column here would hand every
+-- visitor the ability to log in as anyone.
+
+create or replace view v_players_public as
+select
+  p.id,
+  p.league_id,
+  l.slug as league_slug,
+  p.display_name,
+  p.colour_hex,
+  p.avatar_config,
+  p.is_gm
+from players p
+join leagues l on l.id = p.league_id;
+
+-- ------------------------------------------------------------
+-- Public predictions — THE load-bearing filter
+-- ------------------------------------------------------------
+-- Predictions become visible to everyone the moment their deadline passes, and
+-- not one second earlier. This WHERE clause is the whole of that guarantee:
+-- hiding picks in the UI would be defeated by anyone opening devtools.
+--
+-- `deadline_at is not null` FAILS CLOSED. Episodes are seeded with no date
+-- (the schedule isn't announced yet), and NULL <= now() is NULL, not false —
+-- but relying on that is one refactor away from disaster. An episode with no
+-- deadline is one nobody can be late for, so its predictions stay private.
+--
+-- Disallowed entries ARE included, flagged, so the prediction wall can show
+-- them struck through. Every SCORING view below excludes them.
+
+create or replace view v_public_predictions as
+select
+  en.player_id,
+  en.episode_id,
+  pr.category,
+  pr.baker_id,
+  en.lateness,
+  en.is_disallowed,
+  (en.confirmed_at is not null) as confirmed
+from entries en
+join predictions pr on pr.entry_id = en.id
+join episodes    ep on ep.id = en.episode_id
+where ep.deadline_at is not null
+  and ep.deadline_at <= now();
+
+-- ------------------------------------------------------------
+-- Per-prediction scoring
+-- ------------------------------------------------------------
+-- EXISTS, not a join to episode_results. With several correct bakers in one
+-- category (two eliminations, three bingo hits) a join would multiply the row
+-- and pay the player once per match; EXISTS pays once. RULES §3.
+--
+-- A voided category has no non-voided result rows, so is_correct is false for
+-- everyone and the category quietly scores nothing — no special case needed.
+-- A category with no results entered yet behaves identically, which is correct:
+-- it has not been scored, not scored as zero.
+
+create or replace view v_prediction_scores as
+select
+  en.player_id,
+  en.episode_id,
+  pr.category,
+  pr.baker_id,
+  c.points,
+  exists (
+    select 1
+    from episode_results r
+    where r.episode_id = en.episode_id
+      and r.category   = pr.category
+      and r.voided is false
+      and r.baker_id   = pr.baker_id
+  ) as is_correct
+from entries     en
+join predictions pr on pr.entry_id = en.id
+join categories  c  on c.key = pr.category
+where en.is_disallowed is false;
+
+-- ------------------------------------------------------------
+-- Penalties
+-- ------------------------------------------------------------
+-- −1 for naming a Best Baker who left, −1 for naming a Leaving Baker who took
+-- Star Baker. Both can fire in the same week, so the floor is −2.
+-- Voided categories cannot trigger either, since `not voided` filters them out.
+
+create or replace view v_penalties as
+select
+  en.player_id,
+  en.episode_id,
+  'best_left'::text as reason,
+  -1 as points
+from entries     en
+join predictions pr on pr.entry_id = en.id and pr.category = 'best'
+where en.is_disallowed is false
+  and exists (
+    select 1 from episode_results r
+    where r.episode_id = en.episode_id
+      and r.category = 'leaving'
+      and r.voided is false
+      and r.baker_id = pr.baker_id
+  )
+
+union all
+
+select
+  en.player_id,
+  en.episode_id,
+  'leaving_starred'::text,
+  -1
+from entries     en
+join predictions pr on pr.entry_id = en.id and pr.category = 'leaving'
+where en.is_disallowed is false
+  and exists (
+    select 1 from episode_results r
+    where r.episode_id = en.episode_id
+      and r.category = 'best'
+      and r.voided is false
+      and r.baker_id = pr.baker_id
+  );
+
+-- ------------------------------------------------------------
+-- Per-episode scores
+-- ------------------------------------------------------------
+-- One row per player per episode they entered. Entries are the spine, so a
+-- player who entered and got everything wrong appears with 0 — distinct from a
+-- player who never entered at all, who does not appear. The dashboard needs
+-- that difference to draw a flat line rather than a gap.
+
+create or replace view v_episode_scores as
+with picks as (
+  select
+    player_id,
+    episode_id,
+    sum(case when is_correct then points else 0 end) as pick_points,
+    count(*) filter (where is_correct)               as correct_count,
+    count(*)                                         as picks_made
+  from v_prediction_scores
+  group by player_id, episode_id
+),
+pens as (
+  select player_id, episode_id, sum(points) as penalty_points
+  from v_penalties
+  group by player_id, episode_id
+)
+select
+  en.player_id,
+  en.episode_id,
+  ep.number as episode_number,
+  coalesce(pk.pick_points, 0) + coalesce(pn.penalty_points, 0) as points,
+  coalesce(pk.pick_points, 0)    as pick_points,
+  coalesce(pn.penalty_points, 0) as penalty_points,
+  coalesce(pk.correct_count, 0)  as correct_count,
+  coalesce(pk.picks_made, 0)     as picks_made,
+  en.lateness,
+  (en.confirmed_at is not null)  as confirmed
+from entries  en
+join episodes ep on ep.id = en.episode_id
+left join picks pk on pk.player_id = en.player_id and pk.episode_id = en.episode_id
+left join pens  pn on pn.player_id = en.player_id and pn.episode_id = en.episode_id
+where en.is_disallowed is false;
+
+-- ------------------------------------------------------------
+-- End-of-series bonuses
+-- ------------------------------------------------------------
+-- +3 for each of your three who reaches the final, +6 if the winner is one of
+-- them. 'winner' counts as a finalist too, so a perfect set is 3+3+3+6 = 15.
+-- The +3s become visible as soon as bakers are marked 'finalist' (after the
+-- semi-final); the +6 when one is marked 'winner'. RULES §5.
+
+create or replace view v_series_bonus as
+select
+  tp.player_id,
+  count(*) filter (where b.status in ('finalist','winner')) * 3
+    + case when count(*) filter (where b.status = 'winner') > 0 then 6 else 0 end
+    as points,
+  count(*) filter (where b.status in ('finalist','winner')) as finalists,
+  (count(*) filter (where b.status = 'winner') > 0)         as has_winner
+from top_picks tp
+join bakers b on b.id = tp.baker_id
+where tp.is_disallowed is false
+group by tp.player_id;
+
+-- ------------------------------------------------------------
+-- Standings
+-- ------------------------------------------------------------
+-- The leaderboard. Ranked with rank(), so ties share a position — RULES §6's
+-- tiebreak is applied by a human at the end of the series, not here.
+
+create or replace view v_standings as
+with ep as (
+  select player_id,
+         sum(points)        as episode_points,
+         sum(correct_count) as correct_total
+  from v_episode_scores
+  group by player_id
+)
+select
+  p.id            as player_id,
+  p.league_id,
+  l.slug          as league_slug,
+  p.display_name,
+  p.colour_hex,
+  p.avatar_config,
+  coalesce(ep.episode_points, 0) as episode_points,
+  coalesce(sb.points, 0)         as bonus_points,
+  coalesce(ep.episode_points, 0) + coalesce(sb.points, 0) as total_points,
+  coalesce(ep.correct_total, 0)  as correct_total,
+  rank() over (
+    partition by p.league_id
+    order by coalesce(ep.episode_points, 0) + coalesce(sb.points, 0) desc
+  ) as position
+from players p
+join leagues l on l.id = p.league_id
+left join ep on ep.player_id = p.id
+left join v_series_bonus sb on sb.player_id = p.id;
+
+-- ------------------------------------------------------------
+-- Baker stats — feeds /bakers
+-- ------------------------------------------------------------
+-- Prediction-derived columns read v_public_predictions, NOT predictions. Going
+-- to the base table would leak the current week's picks through an aggregate
+-- before the deadline — "eleven people think Priya is going" is exactly the
+-- information the deadline exists to protect.
+
+create or replace view v_baker_stats as
+select
+  b.id as baker_id,
+  b.season_id,
+  b.name,
+  b.photo_url,
+  b.bio_line,
+  b.status,
+  b.eliminated_episode,
+  b.sort_order,
+  (select count(*) from episode_results r
+     where r.baker_id = b.id and r.category = 'best'      and not r.voided) as star_bakers,
+  (select count(*) from episode_results r
+     where r.baker_id = b.id and r.category = 'technical' and not r.voided) as technical_wins,
+  (select count(*) from episode_results r
+     where r.baker_id = b.id and r.category = 'handshake' and not r.voided) as handshakes,
+  (select count(*) from episode_results r
+     where r.baker_id = b.id and r.category = 'bingo'     and not r.voided) as bingo_hits,
+  (select count(*) from v_public_predictions vp
+     where vp.baker_id = b.id and vp.category = 'best'    and not vp.is_disallowed) as picked_best,
+  (select count(*) from v_public_predictions vp
+     where vp.baker_id = b.id and vp.category = 'leaving' and not vp.is_disallowed) as picked_leaving,
+  (select count(*) from top_picks tp
+     where tp.baker_id = b.id and not tp.is_disallowed) as in_top_threes,
+  -- Episodes completed before they left; still-active bakers count every
+  -- completed episode. The "written off N times and still here" stat pairs
+  -- this with picked_leaving.
+  (select count(*) from episodes e
+     where e.season_id = b.season_id
+       and e.status = 'complete'
+       and (b.eliminated_episode is null or e.number < b.eliminated_episode)
+  ) as weeks_survived
+from bakers b;
+
+-- ------------------------------------------------------------
+-- Episodes, safe for the browser
+-- ------------------------------------------------------------
+-- Everything on episodes is publishable — the bingo prompt is meant to be read
+-- before the deadline. This view exists so the dashboard has one obvious place
+-- to read from, and so a future private column does not leak by default.
+
+create or replace view v_episodes_public as
+select
+  e.id, e.season_id, e.number, e.theme, e.air_date,
+  e.deadline_at, e.live_at, e.bingo_prompt, e.status, e.is_final,
+  (e.deadline_at is not null and e.deadline_at <= now()) as predictions_public
+from episodes e;

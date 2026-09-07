@@ -437,8 +437,8 @@ before we're finished.
 
 | Phase | Deliverable | Blocks |
 |------:|-------------|--------|
-| **0** | Repo scaffolded, Supabase project, deployed to Vercel, "hello" page live | everything |
-| **1** | Schema + views + seed (bakers, episodes, your league, everyone's codes and colours) | 2, 3 |
+| **0** | ✅ Repo scaffolded, Supabase project, deployed to Vercel, shell live | everything |
+| **1** | ✅ *written* — schema, views, RLS, seed, smoke test and the code generator in [supabase/](supabase/). **Not yet applied**: paste them in the order in [supabase/README.md](supabase/README.md). Bakers and air dates wait on the announcement. | 2, 3 |
 | **2** | `/play` — login, prediction panel, deadline countdown, Confirm, lateness | playable |
 | **3** | `/gm` — Episodes, Live results entry, Entries tab with Disallow and unlock | scoring |
 | **4** | Scoring views wired up; standings on `/play` | 5 |
