@@ -34,7 +34,7 @@ export default async function handler(req, res) {
     const player = await findPlayer(norm)
     if (!player) {
       // A small delay on failure. The wordlists are public and there are only
-      // ~1,600 combinations, so this slows a script down rather than stopping
+      // ~1,200 combinations, so this slows a script down rather than stopping
       // one — see supabase/README.md. It is a party game among friends, and
       // the honest mitigation is that codes are cheap to reissue.
       await new Promise((r) => setTimeout(r, 400))

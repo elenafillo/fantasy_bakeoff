@@ -16,7 +16,11 @@
 
 import { writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { randomInt } from 'node:crypto'
-import { ADJECTIVES, BAKES, normaliseCode, IDENTITY_COLOURS } from './wordlists.mjs'
+// Both imports come from api/ rather than a copy in here: the words a code is
+// built from and the function that normalises it are the same on both sides of
+// the door. The GM panel issues codes from these very lists.
+import { ADJECTIVES, BAKES, IDENTITY_COLOURS } from '../api/_wordlists.js'
+import { normaliseCode } from '../api/_codes.js'
 
 const OUT = 'supabase/players.seed.sql'
 
@@ -106,7 +110,7 @@ function makeCode() {
   fail(
     'Could not find a code with two unused words. Either the roster is close to ' +
     `${Math.min(ADJECTIVES.length, BAKES.length)} players, or the wordlists in ` +
-    'scripts/wordlists.mjs need extending.'
+    'api/_wordlists.js need extending.'
   )
 }
 
@@ -114,7 +118,7 @@ const free = IDENTITY_COLOURS.filter((c) => !takenColours.has(c.toLowerCase()))
 if (opts.names.length > free.length) {
   fail(
     `${opts.names.length} players but only ${free.length} unused colours. ` +
-    `Add more to IDENTITY_COLOURS in scripts/wordlists.mjs — note DESIGN.md §5 ` +
+    `Add more to IDENTITY_COLOURS in api/_wordlists.js — note DESIGN.md §5 ` +
     `on keeping leaderboard neighbours distinguishable.`
   )
 }

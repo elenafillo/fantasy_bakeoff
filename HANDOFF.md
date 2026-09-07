@@ -77,6 +77,7 @@ key in `src/lib/supabase.js` is public by design and ships in the bundle.
 api/
   _supabase.js    service-role REST helpers. THE SECRET LIVES HERE ONLY.
   _codes.js       normaliseCode — canonical; scripts/ imports it from here
+  _wordlists.js   code words + identity colours; scripts/ imports these too
   player.js       login · state · savePicks · confirm. Lateness + lock rules.
   health.js       env-var presence check (booleans only, never values)
 src/
@@ -95,7 +96,6 @@ src/
 supabase/         SQL — see supabase/README.md for run order
 scripts/
   generate-players.mjs   codes + colours → players.seed.sql (git-ignored)
-  wordlists.mjs
 ```
 
 Docs: [RULES.md](RULES.md) (game) · [TECH_PLAN.md](TECH_PLAN.md) (architecture,
@@ -211,7 +211,7 @@ disable comment.
 
 ## Known limitations, accepted
 
-- **No rate limiting on `/api/player`.** Public wordlists, ~1,600 combinations,
+- **No rate limiting on `/api/player`.** Public wordlists, ~1,200 combinations,
   so codes are enumerable; a failed login sleeps 400ms. Accepted for a league of
   friends — codes are cheap to reissue and predictions go public at the deadline.
   Fix if needed: a `login_attempts` table keyed by IP.

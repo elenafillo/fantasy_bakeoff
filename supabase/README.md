@@ -64,7 +64,7 @@ delete them, which cascades to predictions.
 ## A known limitation
 
 There is no rate limiting on `/api/player`. The wordlists are public and there
-are ~1,600 combinations, so someone determined could enumerate codes and submit
+are ~1,200 combinations, so someone determined could enumerate codes and submit
 as another player. A failed login sleeps 400ms, which slows a script rather than
 stopping one.
 

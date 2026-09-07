@@ -190,7 +190,8 @@ write next week's prompt in a way that spoils anything.
 ### Player codes
 
 Two words, e.g. `velvet-crumb`, `soggy-bottom`, `burnt-caramel`. Generated from
-two ~40-word baking lists (≈1,600 combinations) — the wordlist isn't secret,
+two baking lists in `api/_wordlists.js` (≈1,200 combinations) — the wordlist
+isn't secret,
 because a code also has to exist in the database. Type your code, the server
 matches `code_norm`, you're in. Stored in `localStorage` so your friends type it
 once.
