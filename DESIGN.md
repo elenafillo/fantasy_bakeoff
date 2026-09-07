@@ -229,11 +229,11 @@ button's 3px edge.
 Superchunky titles against thin body text — that weight contrast is doing most of
 the era's work, and it's free.
 
-**A display face for headings is still open.** Nunito 900 carries it for now;
-something chunkier (Baloo 2, Fredoka, or Omnes if you can license it — it's
-Darden Studio, possibly via Adobe Fonts) would lift the masthead and the big
-scores. Nunito stays the body face either way, so swapping it in later touches
-only headings.
+**A display face for headings is still open**, and it must be freely licensable —
+so Google Fonts or an open licence, not a commercial foundry. Nunito 900 carries
+it for now; something chunkier (Baloo 2 and Fredoka are the obvious candidates)
+would lift the masthead and the big scores. Nunito stays the body face either
+way, so swapping one in later touches only headings.
 
 Any webfont needs a real fallback stack — it's the difference between a slow page
 and a broken one.
