@@ -338,6 +338,32 @@ a { color: inherit; }
 .picks-list li { display: flex; gap: .4rem; justify-content: space-between; }
 .picks-list .muted { text-transform: uppercase; font-size: .72rem; font-weight: 800; letter-spacing: .04em; }
 
+/* A code, shown to be read aloud and retyped. Letter-spaced rather than
+   monospaced: Nunito's digits and letters are already even, and a mono face
+   here would be the only one in the app. */
+.code-chip {
+  font-weight: 800; letter-spacing: .04em;
+  color: var(--ink);
+  background: var(--pink-bg);
+  border-radius: 999px;
+  padding: .1rem .5rem;
+}
+
+/* The identity palette. Every swatch carries a tick or a cross as well as a
+   colour — "already taken" is information, and colour never carries it alone. */
+.swatches { display: flex; flex-wrap: wrap; gap: .45rem; }
+.swatch {
+  width: 2.2rem; height: 2.2rem;
+  border-radius: 50%;
+  border: 3px solid var(--card);
+  box-shadow: 0 0 0 1px var(--line);
+  color: #fff; font-weight: 900; font-size: .95rem;
+  cursor: pointer;
+  padding: 0;
+}
+.swatch[aria-pressed='true'] { box-shadow: 0 0 0 2px var(--ink); }
+.swatch:disabled { opacity: .3; cursor: default; }
+
 /* A checkbox sized like a thumb, with its label as part of the target. */
 .check {
   display: inline-flex; align-items: center; gap: .45rem;

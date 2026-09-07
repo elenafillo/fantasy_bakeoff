@@ -63,17 +63,29 @@ export const IDENTITY_COLOURS = [
 ]
 
 /**
+ * Recover the two halves of a stored code, or null if they can't be recovered.
+ *
+ * The remainder after the adjective has to be an EXACT bake. That strictness is
+ * the point: 'crisp' is a prefix of nothing here today, but a looser match would
+ * one day split a code in a misleading place, and this function decides both how
+ * a code is read aloud and which words count as already in circulation.
+ */
+export function splitCode(norm) {
+  const s = String(norm ?? '')
+  const adj = ADJECTIVES.find((a) => s.startsWith(a) && BAKES.includes(s.slice(a.length)))
+  return adj ? [adj, s.slice(adj.length)] : null
+}
+
+/**
  * Codes are stored normalised — "velvet-crumb" becomes "velvetcrumb" — because
  * that is the form the door compares against. Splitting it back into two words
  * is purely for reading: the GM panel lists codes to send to people, and
  * "velvet crumb" is easier to read aloud and retype than "velvetcrumb".
  *
- * The remainder has to be an exact bake, so a code that no longer matches the
- * lists (a word edited out since it was issued) falls back to the stored form
- * rather than being split in a misleading place. Either string logs in.
+ * A code that no longer matches the lists (a word edited out since it was
+ * issued) falls back to the stored form. Either string logs in.
  */
 export function prettyCode(norm) {
-  const s = String(norm ?? '')
-  const adj = ADJECTIVES.find((a) => s.startsWith(a) && BAKES.includes(s.slice(a.length)))
-  return adj ? `${adj} ${s.slice(adj.length)}` : s
+  const parts = splitCode(norm)
+  return parts ? parts.join(' ') : String(norm ?? '')
 }

@@ -15,12 +15,12 @@
 // so it can avoid reissuing a code or a colour already in use).
 
 import { writeFileSync, readFileSync, existsSync } from 'node:fs'
-import { randomInt } from 'node:crypto'
-// Both imports come from api/ rather than a copy in here: the words a code is
-// built from and the function that normalises it are the same on both sides of
-// the door. The GM panel issues codes from these very lists.
-import { ADJECTIVES, BAKES, IDENTITY_COLOURS } from '../api/_wordlists.js'
-import { normaliseCode } from '../api/_codes.js'
+// Everything about a code comes from api/ rather than a copy in here: the words
+// it is built from, the rule that issues it, and the function that normalises
+// it are the same on both sides of the door. The GM panel's Players tab calls
+// the very same issueCode.
+import { IDENTITY_COLOURS } from '../api/_wordlists.js'
+import { issueCode } from '../api/_codes.js'
 
 const OUT = 'supabase/players.seed.sql'
 
@@ -72,46 +72,18 @@ if (opts.append) {
 
 // ---- generate ----
 
-// No two codes in a roster share a word. "whipped-gingerbread" and
-// "boozy-gingerbread" are distinct codes, but they get read aloud across a
-// noisy room and typed by someone half-watching television — and a near-miss
-// that happens to be somebody else's code is the one failure this can actually
-// prevent. With 40 words each and a dozen players, uniqueness is cheap.
-const usedWords = new Set()
-
-// On --append, the words already in circulation have to be held back too, or
-// the second run happily reissues a word the first one used. Codes are stored
-// concatenated, so recover the halves by matching against the lists.
-for (const norm of takenCodes) {
-  const adj = ADJECTIVES.find((a) => norm.startsWith(a))
-  const bake = BAKES.find((b) => norm.endsWith(b))
-  if (adj) usedWords.add(adj)
-  if (bake) usedWords.add(bake)
-}
-
-// randomInt is crypto-backed rather than Math.random. Not because anyone is
-// attacking a bake-off league, but because Math.random seeded from the clock
-// can repeat across two runs a second apart, and a duplicate code is a real
-// mess to unpick once it's in someone's phone.
+// issueCode holds the no-shared-words rule (api/_codes.js). Each new code is
+// added to takenCodes before the next call, so a word is held back the moment
+// it is used — including on --append, where the codes recovered from the
+// existing file are already in there.
 function makeCode() {
-  for (let tries = 0; tries < 800; tries++) {
-    const adj = ADJECTIVES[randomInt(ADJECTIVES.length)]
-    const bake = BAKES[randomInt(BAKES.length)]
-    if (usedWords.has(adj) || usedWords.has(bake)) continue
-
-    const norm = normaliseCode(`${adj}-${bake}`)
-    if (takenCodes.has(norm)) continue
-
-    usedWords.add(adj)
-    usedWords.add(bake)
-    takenCodes.add(norm)
-    return { code: `${adj}-${bake}`, norm }
+  try {
+    const issued = issueCode({ roster: [...takenCodes] })
+    takenCodes.add(issued.norm)
+    return issued
+  } catch (err) {
+    fail(err.message)
   }
-  fail(
-    'Could not find a code with two unused words. Either the roster is close to ' +
-    `${Math.min(ADJECTIVES.length, BAKES.length)} players, or the wordlists in ` +
-    'api/_wordlists.js need extending.'
-  )
 }
 
 const free = IDENTITY_COLOURS.filter((c) => !takenColours.has(c.toLowerCase()))

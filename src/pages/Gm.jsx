@@ -4,6 +4,7 @@ import { storedPassword, rememberPassword, forgetPassword, gmPost } from '../lib
 import { LiveTab } from './gm/LiveTab.jsx'
 import { EpisodesTab } from './gm/EpisodesTab.jsx'
 import { EntriesTab } from './gm/EntriesTab.jsx'
+import { PlayersTab } from './gm/PlayersTab.jsx'
 
 /**
  * The GM control room.
@@ -124,6 +125,7 @@ const TABS = [
   ['live', 'Live', LiveTab],
   ['episodes', 'Episodes', EpisodesTab],
   ['entries', 'Entries', EntriesTab],
+  ['players', 'Players', PlayersTab],
 ]
 
 function Console({ state, password, setState, onLock }) {
@@ -203,8 +205,7 @@ function Console({ state, password, setState, onLock }) {
 
       <Panel>
         <p className="small muted" style={{ marginBottom: 0 }}>
-          Players and Bakers are next — until then, the roster and the cast are
-          set up in SQL.
+          Bakers is next — until then, the cast is set up in SQL.
         </p>
       </Panel>
     </>

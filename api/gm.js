@@ -2,7 +2,7 @@
 // POST /api/gm — everything the GM does
 // ============================================================
 // Actions: state · setCategory · setEpisode · goLive · toggleDisallow ·
-//          unlockEntry
+//          unlockEntry · upsertPlayer · generateCode
 //
 // The password is compared against process.env.GM_PASSWORD on EVERY request.
 // There is no session and no token, deliberately: a session is a second thing
@@ -18,7 +18,8 @@
 import crypto from 'node:crypto'
 import { rest, restInsert, restPatch, restDelete, jsonBody, isUuid } from './_supabase.js'
 import { pickCurrent, categoriesFor } from './_episodes.js'
-import { prettyCode } from './_wordlists.js'
+import { prettyCode, IDENTITY_COLOURS } from './_wordlists.js'
+import { issueCode } from './_codes.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only.' })
@@ -54,6 +55,10 @@ export default async function handler(req, res) {
         return await toggleDisallow(res, body)
       case 'unlockEntry':
         return await unlockEntry(res, body)
+      case 'upsertPlayer':
+        return await upsertPlayer(res, body)
+      case 'generateCode':
+        return await generateCode(res, body)
       default:
         return res.status(400).json({ error: `Unknown action "${body.action}".` })
     }
@@ -158,6 +163,10 @@ async function buildState({ episodeId }) {
     results,
     entries: entries.map((en) => shapeEntry(en, picksPublic)),
     picksPublic,
+    // The palette the Players tab offers. Sent from here rather than imported
+    // into src/, because api/_wordlists.js also holds the code vocabulary and
+    // nothing in the browser has any business with that.
+    colours: IDENTITY_COLOURS,
     players: players.map((p) => ({
       id: p.id,
       league_id: p.league_id,
@@ -210,6 +219,17 @@ async function loadEpisode(season, episodeId) {
     `select=*&id=eq.${episodeId}&season_id=eq.${season.id}&limit=1`
   )
   if (!rows[0]) throw new HttpError(404, 'No such episode in this season.')
+  return rows[0]
+}
+
+async function loadPlayer(season, playerId) {
+  if (!isUuid(playerId)) throw new HttpError(400, 'Which player?')
+  const rows = await rest(
+    'players',
+    `select=id,league_id,display_name,code_norm,leagues!inner(season_id)` +
+      `&id=eq.${playerId}&leagues.season_id=eq.${season.id}&limit=1`
+  )
+  if (!rows[0]) throw new HttpError(404, 'No such player in this season.')
   return rows[0]
 }
 
@@ -432,6 +452,125 @@ async function goLive(res, body) {
   } catch (err) {
     return fail(res, err)
   }
+}
+
+// ------------------------------------------------------------
+// Players — the roster and the codes
+// ------------------------------------------------------------
+// A code IS the credential, so it is issued here and never in the browser.
+// Creating a player issues one in the same breath: a player without a code
+// cannot log in, so there is no useful moment between the two.
+//
+// There is deliberately no delete. Removing a player cascades to their entries
+// and predictions with no undo, and a name typed wrong can simply be retyped.
+// If someone really has to go, it is one line of SQL and a moment's thought.
+
+async function upsertPlayer(res, body) {
+  try {
+    const season = await activeSeason()
+    const name = typeof body.display_name === 'string' ? body.display_name.trim() : ''
+
+    if (body.playerId !== undefined) {
+      const player = await loadPlayer(season, body.playerId)
+
+      const patch = {}
+      if ('display_name' in body) {
+        if (!name) throw new HttpError(400, 'A player needs a name.')
+        patch.display_name = name
+      }
+      if ('colour_hex' in body) {
+        patch.colour_hex = await freeColour(body.colour_hex, player.league_id, player.id)
+      }
+      if ('is_gm' in body) patch.is_gm = body.is_gm === true
+
+      if (Object.keys(patch).length === 0) throw new HttpError(400, 'Nothing to change.')
+      await restPatch('players', `id=eq.${player.id}`, patch)
+      return res.status(200).json(await buildState(body))
+    }
+
+    // ---- a new player ----
+
+    if (!isUuid(body.leagueId)) throw new HttpError(400, 'Which league?')
+    const leagues = await rest(
+      'leagues',
+      `select=id&id=eq.${body.leagueId}&season_id=eq.${season.id}&limit=1`
+    )
+    if (!leagues[0]) throw new HttpError(404, 'No such league in this season.')
+    if (!name) throw new HttpError(400, 'A player needs a name.')
+
+    const colour = await freeColour(body.colour_hex, body.leagueId, null)
+    const { norm } = await freshCode(body.leagueId)
+
+    await restInsert('players', {
+      league_id: body.leagueId,
+      display_name: name,
+      code_norm: norm,
+      colour_hex: colour,
+      is_gm: body.is_gm === true,
+    })
+
+    return res.status(200).json(await buildState(body))
+  } catch (err) {
+    return fail(res, err)
+  }
+}
+
+/**
+ * Reissue somebody's code. The old one stops working the instant this lands —
+ * there is no grace period, because two live codes for one player is exactly
+ * the confusion this is meant to end.
+ *
+ * Their current code stays in the roster passed to issueCode, so the new one
+ * shares no word with the old: being moved from "velvet crumb" to "velvet
+ * scone" would be a worse experience than the wordlist being one pair smaller.
+ */
+async function generateCode(res, body) {
+  try {
+    const season = await activeSeason()
+    const player = await loadPlayer(season, body.playerId)
+    const { norm } = await freshCode(player.league_id)
+    await restPatch('players', `id=eq.${player.id}`, { code_norm: norm })
+    return res.status(200).json(await buildState(body))
+  } catch (err) {
+    return fail(res, err)
+  }
+}
+
+/**
+ * Two different lists, for two different rules: no WORD may repeat inside a
+ * league (they get read aloud in one room), and no CODE may repeat anywhere at
+ * all (code_norm is globally unique, and a code alone has to identify both the
+ * player and their league).
+ */
+async function freshCode(leagueId) {
+  const [roster, everyone] = await Promise.all([
+    rest('players', `select=code_norm&league_id=eq.${leagueId}`),
+    rest('players', 'select=code_norm'),
+  ])
+  return issueCode({
+    roster: roster.map((p) => p.code_norm),
+    taken: everyone.map((p) => p.code_norm),
+  })
+}
+
+/**
+ * A colour is unique within a league (a partial unique index says so) because
+ * the leaderboard and the chart are otherwise ambiguous. Checking here rather
+ * than catching the constraint's error means the GM gets told whose it is.
+ */
+async function freeColour(raw, leagueId, exceptPlayerId) {
+  const hex = String(raw ?? '').trim().toLowerCase()
+  if (!/^#[0-9a-f]{6}$/.test(hex)) throw new HttpError(400, 'A colour looks like #2a78d6.')
+
+  // encodeURIComponent is not optional here: an unescaped # starts the URL's
+  // fragment, and the filter would silently become "colour_hex=eq.".
+  const rows = await rest(
+    'players',
+    `select=id,display_name&league_id=eq.${leagueId}&colour_hex=eq.${encodeURIComponent(hex)}`
+  )
+  const clash = rows.find((p) => p.id !== exceptPlayerId)
+  if (clash) throw new HttpError(400, `${clash.display_name} already has that colour.`)
+  return hex
 }
 
 // ------------------------------------------------------------
