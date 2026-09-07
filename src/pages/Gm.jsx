@@ -1,3 +1,5 @@
+import { Panel } from '../components/Panel.jsx'
+
 /**
  * The GM control room. Built in phase 3.
  *
@@ -7,8 +9,7 @@
  */
 export default function Gm() {
   return (
-    <div className="card">
-      <p className="eyebrow">Behind the counter</p>
+    <Panel head="Behind the counter">
       <h1>GM panel</h1>
       <p className="muted">Phase 3. Password, then tabs:</p>
       <ul className="stub-list">
@@ -19,6 +20,6 @@ export default function Gm() {
         <li><strong>Bakers</strong> — the cast and eliminations</li>
         <li><strong>Leagues</strong> — parallel leagues, and which is default</li>
       </ul>
-    </div>
+    </Panel>
   )
 }

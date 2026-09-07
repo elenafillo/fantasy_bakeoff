@@ -1,11 +1,12 @@
+import { Panel } from '../components/Panel.jsx'
+
 /**
  * The player panel: log in with a two-word code, make this week's five picks,
  * Confirm. Built in phase 2.
  */
 export default function Play() {
   return (
-    <div className="card">
-      <p className="eyebrow">Your panel</p>
+    <Panel head="Your panel">
       <h1>Predictions open soon</h1>
       <p className="muted">Phase 2. This page will hold:</p>
       <ul className="stub-list">
@@ -15,6 +16,6 @@ export default function Play() {
         <li>Your top three bakers, from episode 2</li>
         <li>Your running total and week-by-week history</li>
       </ul>
-    </div>
+    </Panel>
   )
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { Panel } from '../components/Panel.jsx'
 
 /**
  * The league dashboard, and the app's landing page.
@@ -29,20 +30,16 @@ export default function Dashboard({ slug }) {
 
   return (
     <>
-      <div className="card">
-        <p className="eyebrow">{slug ? `League · ${slug}` : 'The table'}</p>
+      <Panel head={slug ? `League · ${slug}` : 'The table'}>
         <h1>Nobody has baked anything yet</h1>
         <p className="muted">
-          This is where the leaderboard, the points chart and the prediction wall
-          will live. Built in phase 5 — see TECH_PLAN.md.
+          The leaderboard, the points chart and the prediction wall will live
+          here. Built in phase 5 — see TECH_PLAN.md.
         </p>
-      </div>
+      </Panel>
 
-      <div className="card">
-        <p className="eyebrow">Phase 0 — plumbing</p>
-        <p
-          className={`pill ${status === 'ok' ? 'ok' : status === 'bad' ? 'bad' : ''}`}
-        >
+      <Panel>
+        <p className={`pill ${status === 'ok' ? 'ok' : status === 'bad' ? 'bad' : ''}`}>
           <span className="dot" />
           {status === 'checking' && 'Checking Supabase…'}
           {status === 'ok' && 'Supabase connected'}
@@ -54,7 +51,7 @@ export default function Dashboard({ slug }) {
             <code>src/lib/supabase.js</code>.
           </p>
         )}
-      </div>
+      </Panel>
     </>
   )
 }

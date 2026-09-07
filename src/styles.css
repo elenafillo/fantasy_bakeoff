@@ -1,60 +1,77 @@
 /* ============================================================
    Fantasy Bake Off — base styles
    ============================================================
-   Mobile first. Most people read this on a phone on the sofa; the wide layout
-   is the enhancement. No dark mode on purpose — it's a display for a lit room.
-   Player colours come from the database and are applied inline, never here. */
+   A 2010 cake-game look: pink ground, white panels, thick rounded type,
+   scalloped icing, candy buttons. No gradients, no bevels — the era comes from
+   shape, colour and weight, which stay crisp on a phone in a way surface
+   effects don't.
+
+   The organising rule (DESIGN.md §2): the frame is a cake game, the data is a
+   scoreboard. Almost nothing sits directly on pink — content lives on white
+   panels, which is what keeps the chart palette valid and player colours
+   distinct.
+
+   Mobile first. No dark mode: this is a display for a lit room. */
 
 :root {
-  --paper: #fdfaf5;
+  /* Ground and panels */
+  --pink-bg: #fbebf1;
+  --icing: #f7c9da;
   --card: #ffffff;
-  --ink: #33302c;
-  --ink-soft: #7b7369;
-  --line: #e8e0d4;
 
-  /* Tints — large areas only. Never a chart line. See DESIGN.md §2. */
-  --pink: #e8a0b0;
-  --sage: #a8bfa0;
-  --sky: #9fbdd4;
-  --butter: #f2d9a0;
+  /* Ink — warm, never pure black */
+  --ink: #3d2b33;
+  --ink-soft: #8a7078;
+  --line: #f0dde4;
+
+  /* Accents. --accent is decorative; --btn is the interactive fill, deep
+     enough to carry white text at 5.7:1. Don't put white text on --accent. */
+  --accent: #e8709c;
+  --btn: #b23a66;
+  --btn-edge: #8e2b50;
+
+  --mint: #7fd1b9;
+  --butter: #ffd98e;
 
   /* Reserved: "the episode is airing", and LATE / VERY LATE. Nothing else. */
-  --live: #d1495b;
+  --live: #e4405f;
 
   /* Series hues — the only colours that draw a chart line, in this order.
-     Validated all-pairs against --paper under protanopia and deuteranopia.
-     A fifth breaks it (red vs orange, ΔE 7.1 to ordinary vision), which is why
-     the chart highlights at most four players at once. Re-run the check in
-     DESIGN.md §3 before changing any of these. */
+     Validated all-pairs under protanopia and deuteranopia against a near-white
+     surface, which still holds because the chart sits on a white panel, never
+     on the pink. Re-run the check in DESIGN.md §3 before changing any of these.
+     See DESIGN.md §6 for the three line states. */
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
   --series-4: #4a3aa7;
-  --line-muted: #ddd6ca;
 
-  --radius: 14px;
+  --radius: 20px;
+  --radius-sm: 12px;
   --pad: 1rem;
   --max: 68rem;
 
-  --font-display: 'Georgia', 'Iowan Old Style', 'Times New Roman', serif;
-  --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font: 'Nunito', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  background: var(--paper);
+  background: var(--pink-bg);
   color: var(--ink);
-  font-family: var(--font-body);
+  font-family: var(--font);
   font-size: 16px;
+  font-weight: 400;
   line-height: 1.55;
   -webkit-text-size-adjust: 100%;
 }
 
-h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.2; }
-h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
-h2 { font-size: 1.2rem; margin: 0 0 .5rem; }
+/* Superchunky titles, thin everywhere else. A display face may replace the
+   headings later; until then Nunito's top weights carry it. */
+h1, h2, h3 { font-weight: 900; line-height: 1.15; letter-spacing: -0.015em; }
+h1 { font-size: 1.7rem; margin: 0 0 .35rem; }
+h2 { font-size: 1.25rem; margin: 0 0 .5rem; }
 
 a { color: inherit; }
 
@@ -64,79 +81,140 @@ a { color: inherit; }
 
 .topbar {
   position: sticky; top: 0; z-index: 10;
-  background: var(--paper);
-  border-bottom: 1px solid var(--line);
+  background: var(--pink-bg);
   margin-bottom: 1.5rem;
 }
 .topbar-inner {
   max-width: var(--max); margin: 0 auto;
-  padding: .75rem var(--pad);
-  display: flex; align-items: baseline; gap: 1rem;
+  padding: .8rem var(--pad);
+  display: flex; align-items: center; gap: 1rem;
   flex-wrap: wrap;
 }
 .brand {
-  font-family: var(--font-display);
-  font-size: 1.05rem; font-weight: 600;
-  letter-spacing: .01em; text-decoration: none;
-  white-space: nowrap;
+  font-size: 1.15rem; font-weight: 1000;
+  letter-spacing: -0.02em; text-decoration: none;
+  white-space: nowrap; line-height: 1;
 }
-.brand em { font-style: normal; color: var(--pink); }
+.brand em { font-style: normal; color: var(--btn); }
 
-.nav { display: flex; gap: .25rem; margin-left: auto; }
+.nav { display: flex; gap: .3rem; margin-left: auto; }
 .nav a {
   text-decoration: none;
-  font-size: .78rem; font-weight: 600;
-  letter-spacing: .09em; text-transform: uppercase;
+  font-size: .78rem; font-weight: 800;
+  letter-spacing: .06em; text-transform: uppercase;
   color: var(--ink-soft);
-  padding: .3rem .55rem;
+  padding: .35rem .7rem;
   border-radius: 999px;
   white-space: nowrap;
 }
-.nav a:hover { color: var(--ink); background: #00000008; }
-.nav a[aria-current='page'] { color: var(--ink); background: var(--butter); }
+.nav a:hover { color: var(--ink); background: #ffffff90; }
+.nav a[aria-current='page'] { color: var(--ink); background: var(--card); }
 
-/* ---- Cards ---- */
+/* ---- Panels ----
+   The default container. Everything readable lives on one of these. */
 
-.card {
+.panel {
   background: var(--card);
-  border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 1.15rem;
   margin-bottom: 1rem;
+  overflow: hidden;
 }
-.card > :first-child { margin-top: 0; }
-.card > :last-child { margin-bottom: 0; }
+.panel-body { padding: 1.25rem; }
+.panel-body > :first-child { margin-top: 0; }
+.panel-body > :last-child { margin-bottom: 0; }
+
+/* The icing band: a section header whose lower edge is scalloped, like icing
+   over the top of the panel. One decorative motif, used in one place — on
+   every edge of every card it would read as a template rather than a choice. */
+.panel-head {
+  position: relative;
+  background: var(--icing);
+  padding: .85rem 1.25rem 1rem;
+  font-weight: 900;
+  font-size: .8rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.panel-head::after {
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: -11px;
+  height: 12px;
+  background-image: radial-gradient(circle at 12px 0, var(--icing) 11.5px, transparent 12px);
+  background-size: 24px 24px;
+  background-repeat: repeat-x;
+}
+/* Clears the scallop that hangs into the body. */
+.panel-head + .panel-body { padding-top: 1.6rem; }
 
 .muted { color: var(--ink-soft); }
 .small { font-size: .875rem; }
 
-.eyebrow {
-  font-size: .7rem; font-weight: 700;
-  letter-spacing: .12em; text-transform: uppercase;
-  color: var(--ink-soft);
-  margin-bottom: .35rem;
+.stub-list { margin: .6rem 0 0; padding-left: 1.15rem; color: var(--ink-soft); }
+.stub-list li { margin: .25rem 0; }
+
+/* ---- Candy button ----
+   Solid fill plus a hard bottom edge — the 2010 feel without a gradient. */
+
+.btn {
+  display: inline-block;
+  background: var(--btn);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: .7rem 1.5rem;
+  font-family: var(--font);
+  font-size: 1rem; font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--btn-edge);
+  transition: transform .12s, box-shadow .12s;
+}
+.btn:active { transform: translateY(3px); box-shadow: 0 0 0 var(--btn-edge); }
+
+/* ---- Avatars ----
+   Thick white ring: of the era, and genuinely useful for lifting a soft colour
+   off a soft background. */
+
+.avatar {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2.5rem; height: 2.5rem;
+  border-radius: 50%;
+  border: 3px solid var(--card);
+  box-shadow: 0 0 0 1px var(--line);
+  font-weight: 900; color: #fff;
+  flex: none;
 }
 
-.stub-list { margin: .5rem 0 0; padding-left: 1.1rem; color: var(--ink-soft); }
-.stub-list li { margin: .2rem 0; }
-
-/* ---- Status pill (phase-0 connection check) ---- */
+/* ---- Pills ----
+   Always a dot or icon AND a word: colour never carries a state on its own. */
 
 .pill {
   display: inline-flex; align-items: center; gap: .45rem;
-  font-size: .8rem; font-weight: 600;
-  padding: .3rem .7rem; border-radius: 999px;
-  border: 1px solid var(--line); background: var(--paper);
+  font-size: .82rem; font-weight: 800;
+  padding: .35rem .8rem; border-radius: 999px;
+  background: var(--pink-bg);
 }
-.pill .dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--ink-soft); }
-.pill.ok .dot { background: var(--sage); }
+.pill .dot { width: .55rem; height: .55rem; border-radius: 50%; background: var(--ink-soft); flex: none; }
+.pill.ok .dot { background: var(--mint); }
+.pill.bad { background: #fdeaee; color: var(--live); }
 .pill.bad .dot { background: var(--live); }
-.pill.bad { border-color: var(--live); color: var(--live); }
+
+/* Voided categories and disallowed entries. Functional, not decorative: it
+   reads as struck out without relying on colour, including in print. */
+.hatched {
+  background-image: repeating-linear-gradient(
+    45deg, transparent, transparent 4px, var(--line) 4px, var(--line) 6px
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
 
 /* ---- Wide screens ---- */
 
 @media (min-width: 48rem) {
   :root { --pad: 1.5rem; }
-  h1 { font-size: 2rem; }
-  .nav a { font-size: .8rem; padding: .3rem .7rem; }
+  h1 { font-size: 2.2rem; }
+  .brand { font-size: 1.3rem; }
+  .nav a { font-size: .8rem; padding: .35rem .85rem; }
 }

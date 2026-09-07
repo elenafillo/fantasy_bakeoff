@@ -1,5 +1,6 @@
 import { usePath } from './lib/router.js'
 import { Link } from './lib/Link.jsx'
+import { Panel } from './components/Panel.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Play from './pages/Play.jsx'
 import Bakers from './pages/Bakers.jsx'
@@ -26,12 +27,12 @@ function route(path) {
   if (league) return <Dashboard slug={league[1]} />
 
   return (
-    <div className="card">
+    <Panel>
       <h1>Nothing here</h1>
       <p className="muted">
         That page doesn&rsquo;t exist. <Link to="/">Back to the table</Link>.
       </p>
-    </div>
+    </Panel>
   )
 }
 
