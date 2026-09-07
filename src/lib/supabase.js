@@ -49,12 +49,18 @@ export const supabase = {
     return data
   },
 
-  // Connectivity check for the phase-0 shell: the REST root answers with an
-  // OpenAPI document when the URL and key are both good. Remove once there are
-  // real tables to read.
+  // Connectivity check for the shell.
+  //
+  // It reads a real granted view rather than the `/rest/v1/` OpenAPI root:
+  // Supabase returns 401 on that root for publishable keys, so probing it
+  // reported a broken connection on a perfectly healthy database. Reading
+  // v_categories_public proves three things at once — the URL resolves, the key
+  // is accepted, and the schema has actually been applied.
   async ping() {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/`, { headers: headers() })
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+    const rows = await this.query('v_categories_public', { select: 'key', limit: 1 })
+    if (!Array.isArray(rows) || rows.length === 0) {
+      throw new Error('Connected, but there are no categories — has seed.sql been run?')
+    }
     return true
   },
 

@@ -44,10 +44,10 @@ where not exists (select 1 from seasons where name = 'GBBO 2026');
 -- public URL, /league/<slug>.
 
 insert into leagues (season_id, name, slug, is_default, is_active)
-select s.id, 'The Proving Drawer', 'proving-drawer', true, true
+select s.id, 'In The Oven', 'in-the-oven', true, true
 from seasons s
 where s.name = 'GBBO 2026'
-  and not exists (select 1 from leagues where slug = 'proving-drawer');
+  and not exists (select 1 from leagues where slug = 'in-the-oven');
 
 -- ------------------------------------------------------------
 -- Ten episodes

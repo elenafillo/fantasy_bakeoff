@@ -28,7 +28,13 @@ export default async function handler(req, res) {
 
   if (env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY) {
     try {
-      const probe = await fetch(`${SUPABASE_URL}/rest/v1/`, { headers: serviceHeaders() })
+      // A real table, not the `/rest/v1/` OpenAPI root. The root answers for a
+      // service key but 401s for a publishable one, so probing it would report
+      // health that the browser does not actually have — and it says nothing
+      // about whether the schema exists.
+      const probe = await fetch(`${SUPABASE_URL}/rest/v1/categories?select=key&limit=1`, {
+        headers: serviceHeaders(),
+      })
       serviceKeyWorks = probe.ok
       if (!probe.ok) detail = `${probe.status} ${probe.statusText}`
     } catch (err) {
