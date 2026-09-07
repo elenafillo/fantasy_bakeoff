@@ -1,7 +1,8 @@
 // ============================================================
 // POST /api/gm — everything the GM does
 // ============================================================
-// Actions: state · setCategory · setEpisode · goLive
+// Actions: state · setCategory · setEpisode · goLive · toggleDisallow ·
+//          unlockEntry
 //
 // The password is compared against process.env.GM_PASSWORD on EVERY request.
 // There is no session and no token, deliberately: a session is a second thing
@@ -49,6 +50,10 @@ export default async function handler(req, res) {
         return await setEpisode(res, body)
       case 'goLive':
         return await goLive(res, body)
+      case 'toggleDisallow':
+        return await toggleDisallow(res, body)
+      case 'unlockEntry':
+        return await unlockEntry(res, body)
       default:
         return res.status(400).json({ error: `Unknown action "${body.action}".` })
     }
@@ -423,6 +428,101 @@ async function goLive(res, body) {
       : { status: 'locked', live_at: null }
 
     await restPatch('episodes', `id=eq.${episode.id}`, patch)
+    return res.status(200).json(await buildState({ episodeId: episode.id }))
+  } catch (err) {
+    return fail(res, err)
+  }
+}
+
+// ------------------------------------------------------------
+// Entries — the Disallow switch
+// ------------------------------------------------------------
+// Excludes an entry from scoring AND from every stat, as if it were never made
+// (RULES §2.5). Every scoring view filters on is_disallowed, so this one column
+// takes effect everywhere at once.
+
+async function toggleDisallow(res, body) {
+  try {
+    const season = await activeSeason()
+    const episode = await loadEpisode(season, body.episodeId)
+    if (!isUuid(body.entryId)) throw new HttpError(400, 'Which entry?')
+
+    // Scoped to the episode, which is already scoped to the season — so an id
+    // from another week cannot be flipped by naming this one.
+    const rows = await rest(
+      'entries',
+      `select=id&id=eq.${body.entryId}&episode_id=eq.${episode.id}&limit=1`
+    )
+    if (!rows[0]) throw new HttpError(404, 'No such entry in this episode.')
+
+    await restPatch('entries', `id=eq.${rows[0].id}`, {
+      is_disallowed: body.disallowed === true,
+    })
+
+    return res.status(200).json(await buildState({ episodeId: episode.id }))
+  } catch (err) {
+    return fail(res, err)
+  }
+}
+
+// ------------------------------------------------------------
+// Entries — opening the door
+// ------------------------------------------------------------
+// gm_unlocked_at is the ONLY thing that permits a write after live_at
+// (api/player.js, lockState). It is per player, per week, and it cannot be done
+// quietly: anything submitted through it is stamped VERY LATE.
+//
+// This is keyed on the PLAYER, not on an entry, because the person who needs
+// the door opened is usually the person who has not submitted at all — and
+// lockState reads gm_unlocked_at off an entry row, so one has to exist. Opening
+// a door for someone with no entry therefore creates an empty one.
+//
+// That placeholder takes the default lateness ('on_time') rather than being
+// stamped very late up front. Nothing has been submitted yet, and savePicks
+// recomputes lateness from the server clock on every save — so stamping it here
+// would only be a lie in the case where the GM opens a door in advance and the
+// player then submits before the episode airs.
+//
+// Closing a door that was never walked through deletes the placeholder, so an
+// unused unlock does not leave a phantom 0-point entry in the standings.
+
+async function unlockEntry(res, body) {
+  try {
+    const season = await activeSeason()
+    const episode = await loadEpisode(season, body.episodeId)
+    if (!isUuid(body.playerId)) throw new HttpError(400, 'Which player?')
+
+    const players = await rest(
+      'players',
+      `select=id,leagues!inner(season_id)&id=eq.${body.playerId}` +
+        `&leagues.season_id=eq.${season.id}&limit=1`
+    )
+    if (!players[0]) throw new HttpError(404, 'No such player in this season.')
+
+    const rows = await rest(
+      'entries',
+      `select=id,predictions(category)&player_id=eq.${body.playerId}` +
+        `&episode_id=eq.${episode.id}&limit=1`
+    )
+    const entry = rows[0] ?? null
+    const open = body.open !== false
+
+    if (open && entry) {
+      await restPatch('entries', `id=eq.${entry.id}`, {
+        gm_unlocked_at: new Date().toISOString(),
+      })
+    } else if (open) {
+      await restInsert('entries', {
+        player_id: body.playerId,
+        episode_id: episode.id,
+        gm_unlocked_at: new Date().toISOString(),
+      })
+    } else if (entry && (entry.predictions ?? []).length === 0) {
+      await restDelete('entries', `id=eq.${entry.id}`)
+    } else if (entry) {
+      await restPatch('entries', `id=eq.${entry.id}`, { gm_unlocked_at: null })
+    }
+
     return res.status(200).json(await buildState({ episodeId: episode.id }))
   } catch (err) {
     return fail(res, err)

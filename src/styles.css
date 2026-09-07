@@ -322,6 +322,33 @@ a { color: inherit; }
 
 .rule { border: none; border-top: 2px solid var(--line); margin: 1.2rem 0; }
 
+/* ---- Roster rows ----
+   The Entries, Players and Bakers tabs are all the same shape: a person or a
+   baker, some pills, and the controls for them. One block of CSS, three tabs. */
+
+.roster { display: grid; gap: .9rem; margin-top: 1rem; }
+.roster-row { display: grid; gap: .5rem; }
+.roster-row + .roster-row { border-top: 2px solid var(--line); padding-top: .9rem; }
+.roster-who { display: flex; align-items: center; gap: .6rem; }
+.roster-who strong { line-height: 1.2; }
+.roster-actions { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
+.roster-row .deadline { margin-bottom: 0; }
+
+.picks-list { list-style: none; margin: 0; padding: 0; font-size: .875rem; }
+.picks-list li { display: flex; gap: .4rem; justify-content: space-between; }
+.picks-list .muted { text-transform: uppercase; font-size: .72rem; font-weight: 800; letter-spacing: .04em; }
+
+/* A checkbox sized like a thumb, with its label as part of the target. */
+.check {
+  display: inline-flex; align-items: center; gap: .45rem;
+  font-size: .85rem; font-weight: 800;
+  padding: .5rem .2rem;
+  cursor: pointer;
+}
+.check input { width: 1.15rem; height: 1.15rem; accent-color: var(--btn); cursor: pointer; }
+.check input:disabled { cursor: default; }
+.check:has(input:disabled) { color: var(--ink-soft); cursor: default; }
+
 textarea.input { resize: vertical; line-height: 1.4; }
 
 @media (prefers-reduced-motion: reduce) {
