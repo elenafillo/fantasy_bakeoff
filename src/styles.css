@@ -274,6 +274,56 @@ a { color: inherit; }
   );
 }
 
+/* ---- GM panel ----
+   The same components as the rest of the app, sized up. The Live tab is used
+   at speed, one-handed, on a sofa: nothing on it is smaller than a thumb. */
+
+.tabs {
+  display: flex; gap: .3rem;
+  margin: .9rem 0 .2rem;
+  overflow-x: auto;
+}
+.tab {
+  font-family: var(--font);
+  font-size: .78rem; font-weight: 800;
+  letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink-soft);
+  background: var(--pink-bg);
+  border: none; border-radius: 999px;
+  padding: .55rem .95rem;
+  cursor: pointer; white-space: nowrap;
+}
+.tab[aria-selected='true'] { background: var(--btn); color: #fff; }
+
+.field { display: block; }
+.field .small { display: block; margin-top: .3rem; }
+
+.stack { display: grid; gap: .9rem; }
+
+.results { display: grid; gap: 1.1rem; margin-top: 1rem; }
+.result { display: grid; gap: .5rem; }
+.result + .result { border-top: 2px solid var(--line); padding-top: 1.1rem; }
+.result .input { font-size: 1.05rem; padding: .8rem; }
+
+.row { display: flex; gap: .5rem; align-items: center; }
+.row .input { flex: 1 1 auto; }
+
+/* A quiet button that is still a 44px target. */
+.btn-mini {
+  font-family: var(--font);
+  font-size: .85rem; font-weight: 800;
+  color: var(--btn); background: var(--card);
+  border: 2px solid var(--line); border-radius: 999px;
+  padding: .6rem 1.05rem;
+  cursor: pointer; white-space: nowrap;
+  justify-self: start;
+}
+.btn-mini:disabled { color: var(--ink-soft); cursor: default; }
+
+.rule { border: none; border-top: 2px solid var(--line); margin: 1.2rem 0; }
+
+textarea.input { resize: vertical; line-height: 1.4; }
+
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
