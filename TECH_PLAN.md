@@ -137,13 +137,41 @@ The cost is that "show me my week" needs a small pivot in the UI. Cheap.
 
 ```sql
 v_prediction_scores  -- one row per prediction, with points won
-v_episode_scores     -- player × episode → points, incl. penalties
-v_standings          -- player → cumulative points, rank, rank change
+v_penalties          -- the two −1s, each tagged with the CATEGORY whose pick
+                     --   brought it on, so the panel can say which
+v_episode_scores     -- player × episode → points, incl. penalties, plus a
+                     --   `penalties` jsonb array itemising them by category
+v_standings          -- player → cumulative points, rank
 v_series_bonus       -- top-3 finalist + winner bonuses
 v_baker_stats        -- per baker: star bakers, technicals, handshakes,
                      --   weeks survived, how often picked, how often
                      --   predicted to leave and didn't  (feeds /bakers)
+
+v_episode_results_public
+                     -- what happened: category → winner(s), or Nobody.
+                     --   Keeps "no row = not decided yet" apart from
+                     --   "voided row = Nobody won it", which is the one
+                     --   distinction the UI must not collapse. No deadline
+                     --   gate: a result is a fact about the episode.
 ```
+
+`v_standings` gives the current position only. **Movement** — where you stood
+last week — is rebuilt in the browser from `v_episode_scores`, since neither
+that view nor `v_series_bonus` carries a rank of its own
+([src/lib/scores.js](src/lib/scores.js)). That is the only scoring arithmetic
+anywhere in `src/`, and it is about ordering, not points.
+
+**Two of these views are deliberately ungranted** — `v_prediction_scores` and
+`v_penalties`. They are internal steps computed from `entries` with no deadline
+filter of their own, safe only because the views built on them aggregate the
+individual picks away. Anything the UI needs from them travels out through
+`v_episode_scores` instead, which is why the penalty reasons are aggregated into
+a column there rather than the browser reading `v_penalties` directly.
+
+One consequence worth knowing before editing any of them: **`create or replace
+view` may only append columns to the end of the list.** Re-ordering means
+dropping the view, which cascades down the chain above and takes the grants in
+`rls.sql` with it.
 
 Scoring lives in **SQL, once**. The dashboard, the leaderboard and the player's
 own panel all read the same views, so they cannot disagree — which is exactly the
@@ -449,7 +477,7 @@ it's ~5 lines and it never mysteriously stops.
 | Screen | Interval | Notes |
 |--------|---------:|-------|
 | Dashboard | **4s** while the episode is `live` | Backs off to 30s otherwise |
-| Player panel | 20s | Just the countdown and the bingo prompt |
+| `/play` | **on focus** | No timer. Refreshes on `focus` / `visibilitychange` |
 | GM Live tab | 5s | So two devices don't fight |
 | `/bakers`, `/rules` | none | Fetch once |
 
@@ -458,6 +486,31 @@ All dashboard polling is against anon-readable views, so it costs Supabase reads
 
 If it feels laggy on the night, Supabase Realtime is a drop-in upgrade for the
 dashboard only.
+
+### Why `/play` doesn't poll
+
+This started as a 20s poll and became a refresh on focus in phase 4
+([src/lib/useRefreshOnFocus.js](src/lib/useRefreshOnFocus.js)).
+
+`/play` is a form you fill in once a week. A 20s timer would spend roughly
+58,000 Vercel invocations across the series keeping a screen up to date that
+nobody is looking at, and its one genuinely ticking element — the countdown — is
+local already and needs no network at all
+([src/lib/useCountdown.js](src/lib/useCountdown.js)). Refreshing when the tab
+comes back to the front is fresh the moment you open it and silent otherwise.
+
+Two things follow from it:
+
+- **The scorecard half is free.** It reads the granted views with the
+  publishable key, so a phone reopened twenty times during an episode costs no
+  Vercel invocations. Only the `/api/player` half (picks, the lock, the bingo
+  prompt) is an invocation, and it is skipped while the form has unsaved
+  changes — a fresh `state.picks` would re-sync the form and throw those edits
+  away. No rule rests on the skip: `savePicks` re-derives the lock from the
+  server clock and answers 403 if the episode has started meanwhile.
+- **The dashboard is unaffected**, and deliberately so. Points landing live
+  while everyone watches is the whole point of the product, and it polls
+  Supabase directly — so the 4s interval costs nothing on Vercel either.
 
 ---
 
@@ -486,7 +539,7 @@ before we're finished.
 | **1** | ✅ *written* — schema, views, RLS, seed, smoke test and the code generator in [supabase/](supabase/). **Not yet applied**: paste them in the order in [supabase/README.md](supabase/README.md). Bakers and air dates wait on the announcement. | 2, 3 |
 | **2** | ✅ `/play` — login, prediction panel, deadline countdown, Confirm, lateness | playable |
 | **3** | ✅ `/gm` — all five tabs: Live, Episodes, Entries, Players, Bakers. | scoring |
-| **4** | Scoring views wired up; standings on `/play` | 5 |
+| **4** | ✅ Scoring wired up; the scorecard and standings on `/play`. Adds `v_episode_results_public` — **paste `views.sql` and `rls.sql` again** | 5 |
 | **5** | `/` dashboard — chart, leaderboard, results grid, prediction wall | showable |
 | **6** | `/bakers`, `/rules`, top-three picks and series bonuses, stats strip | — |
 | **7** | Avatar builder with your friend's SVGs; visual design pass | — |

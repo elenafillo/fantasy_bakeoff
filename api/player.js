@@ -20,6 +20,12 @@ import { rest, restInsert, restPatch, restDelete, jsonBody, isUuid } from './_su
 import { normaliseCode } from './_codes.js'
 import { currentEpisode, categoriesFor } from './_episodes.js'
 
+// The statuses a player can still be picked in. 'finalist' and 'winner' stay
+// pickable, which is what makes the final's card work. Written once because
+// buildState and savePicks must agree: the picker would otherwise offer a baker
+// the save then refuses, or hide one it would have accepted.
+const PICKABLE = ['active', 'finalist', 'winner']
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only.' })
 
@@ -119,16 +125,27 @@ async function buildState(player) {
   const seasonId = player.leagues.season_id
   const episode = await currentEpisode(seasonId)
 
-  const [allCategories, bakers] = await Promise.all([
+  const [allCategories, allBakers] = await Promise.all([
     rest('categories', 'select=*&order=sort_order.asc'),
-    // Eliminated bakers cannot be picked. 'finalist' and 'winner' are still
-    // pickable, which is what makes the final's card work.
     rest(
       'bakers',
       `select=id,name,photo_url,bio_line,status&season_id=eq.${seasonId}` +
-        `&status=in.(active,finalist,winner)&order=sort_order.asc,name.asc`
+        `&order=sort_order.asc,name.asc`
     ),
   ])
+
+  // Two lists from one query, because they answer different questions.
+  //
+  // `bakers` is who you may pick — eliminated ones are gone from it, and the
+  // filter stays here on the server so it cannot drift from savePicks.
+  //
+  // `bakerNames` is every baker who has ever been in the tent, so the panel can
+  // put a name to a pick. That has to include the departed: the moment the
+  // leaving result lands, api/gm.js marks that baker eliminated, and without
+  // this the player who called it correctly would watch their best pick of the
+  // week turn into a blank. Names are public anyway (v_baker_stats).
+  const bakers = allBakers.filter((b) => PICKABLE.includes(b.status))
+  const bakerNames = Object.fromEntries(allBakers.map((b) => [b.id, b.name]))
 
   let entry = null
   let picks = {}
@@ -163,6 +180,7 @@ async function buildState(player) {
     episode,
     categories: episode ? categoriesFor(allCategories, episode) : [],
     bakers,
+    bakerNames,
     picks,
     entry: entry && {
       lateness: entry.lateness,
@@ -218,7 +236,7 @@ async function savePicks(res, player, body) {
 
   const validBakers = await rest(
     'bakers',
-    `select=id&season_id=eq.${seasonId}&status=in.(active,finalist,winner)`
+    `select=id&season_id=eq.${seasonId}&status=in.(${PICKABLE.join(',')})`
   )
   const bakerIds = new Set(validBakers.map((b) => b.id))
 

@@ -86,11 +86,13 @@ grant select on v_series_bonus       to anon, authenticated;
 grant select on v_standings          to anon, authenticated;
 grant select on v_baker_stats        to anon, authenticated;
 grant select on v_episodes_public    to anon, authenticated;
+grant select on v_episode_results_public to anon, authenticated;
 
 -- Deliberately NOT granted, and worth stating so nobody adds them later by
 -- reflex: players (codes), entries, predictions, top_picks (picks are private
--- until their lock time), episode_results (reached via v_baker_stats and, in
--- phase 5, a results view), season_settings.
+-- until their lock time), episode_results (reached via v_baker_stats and
+-- v_episode_results_public, which expose what happened without the row ids or
+-- the GM's typing times), season_settings.
 --
 -- v_prediction_scores and v_penalties are also not granted: they are internal
 -- steps, computed from entries with no deadline filter of their own. They are

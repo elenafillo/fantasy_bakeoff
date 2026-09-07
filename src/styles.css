@@ -33,6 +33,10 @@
   --mint: #7fd1b9;
   --butter: #ffd98e;
 
+  /* The 45° hatch stripe — "Nobody won it", and disallowed entries. The ink at
+     low alpha, so it composites the same on white panels and on the pink. */
+  --hatch: rgba(61, 43, 51, .18);
+
   /* Reserved: "the episode is airing", and LATE / VERY LATE. Nothing else. */
   --live: #e4405f;
 
@@ -267,12 +271,131 @@ a { color: inherit; }
 
 /* Categories won by Nobody, and disallowed entries. Functional, not decorative:
    it reads as struck out without relying on colour, including in print. A
-   category not yet decided stays plainly blank — the two must not look alike. */
+   category not yet decided stays plainly blank — the two must not look alike.
+
+   The stripe is the ink at low alpha rather than --line, so it composites the
+   same way on the white panels and on the pink ground, and so it is actually
+   visible as a texture: --line reads fine as a 2px border but measured 1.15:1
+   against white as a stripe, which is not a signal. Texture strength is taste
+   (DESIGN.md §3), the two states looking different is not. */
 .hatched {
   background-image: repeating-linear-gradient(
-    45deg, transparent, transparent 4px, var(--line) 4px, var(--line) 6px
+    45deg, transparent, transparent 4px, var(--hatch) 4px, var(--hatch) 6px
   );
 }
+
+/* ---- The scorecard ----
+   How a week went. Every number here arrives already worked out by
+   supabase/views.sql; the only thing the browser decides is the tick. */
+
+.score-head {
+  display: flex; align-items: flex-start;
+  gap: 1rem 1.4rem; flex-wrap: wrap;
+  margin-bottom: 1.2rem;
+}
+.score-big { display: flex; align-items: baseline; gap: .5rem; }
+.score-number {
+  display: inline-block;
+  font-size: 3.2rem; font-weight: 1000; line-height: .9;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.score-unit {
+  font-size: .78rem; font-weight: 800; line-height: 1.15;
+  letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.score-aside { align-self: center; }
+.score-move { font-size: 1.05rem; font-weight: 900; display: block; }
+
+/* The one moment worth animating (DESIGN.md §10): 400ms with a slight
+   overshoot, and only when the number actually changes. Nothing pulses but the
+   live indicator, so this fires once and stops. Killed with everything else by
+   prefers-reduced-motion, below. */
+@keyframes score-pop {
+  from { transform: scale(.78); }
+  to   { transform: scale(1); }
+}
+.score-number.popped { animation: score-pop .4s cubic-bezier(.34, 1.56, .64, 1); }
+
+.verdicts { display: grid; gap: .85rem; }
+.verdict { display: grid; gap: .25rem; }
+
+/* background-COLOR, not the shorthand: the shorthand would reset the
+   background-image that .hatched sets on the Nobody state. */
+.verdict-body {
+  background-color: var(--pink-bg);
+  border-radius: var(--radius-sm);
+  padding: .55rem .75rem;
+  font-weight: 800;
+  border: 2px solid transparent;
+}
+.verdict-line, .verdict-detail { display: block; }
+.verdict-mark { font-weight: 900; margin-right: .4rem; }
+.verdict-detail {
+  font-size: .85rem; font-weight: 600;
+  color: var(--ink-soft);
+  margin-top: .1rem;
+}
+
+/* Mint always comes WITH the tick, never instead of it (DESIGN.md §5). */
+.verdict.right .verdict-body { background-color: #e6f6f0; color: #14795c; }
+.verdict.right .verdict-detail { color: #14795c; }
+
+/* A wrong pick recedes: it is the ordinary outcome and it costs nothing, so it
+   is greyed out with no mark and no colour. That is what leaves room for the
+   one or two rows a week that DO cost something to stand out — before this,
+   losing a point looked exactly like missing one. The words carry it either
+   way ("It was Baker Three" / "You said Baker Two"), so nothing here rests on
+   the grey alone. */
+.verdict.wrong .verdict-body,
+.verdict.nopick .verdict-body {
+  background-color: var(--card);
+  border-color: var(--line);
+  color: var(--ink-soft);
+}
+
+/* A penalty is red, and says which pick cost the point. This widens --live
+   beyond "the episode is airing" and LATE / VERY LATE (DESIGN.md §4) — a
+   deliberate call: losing a point is the one thing on this panel worth an
+   alarm, it happens at most twice a week, and it never shares a screen region
+   with the live indicator. The −1 and the sentence carry the meaning; the red
+   only draws the eye. */
+.verdict.penalised .verdict-body {
+  background-color: #fdeaee;
+  border-color: #fdeaee;
+  color: var(--live);
+}
+.verdict.penalised .verdict-detail { color: var(--live); }
+.verdict-cost {
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  margin-right: .45rem;
+}
+
+/* Settled, and paid nobody: hatched over the panel's own white. */
+.verdict.nobody .verdict-body { background-color: var(--card); border-color: var(--line); }
+
+/* Still to come: plainly blank behind a stitch border — the dashed hairline
+   DESIGN.md §7 keeps for provisional things. Blank and hatched must not look
+   alike; that difference is the whole point (RULES.md §3). */
+.verdict.pending .verdict-body {
+  background-color: var(--card);
+  border: 2px dashed var(--line);
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.score-sums {
+  display: grid; gap: .15rem;
+  margin-top: 1.1rem; padding-top: .8rem;
+  border-top: 2px solid var(--line);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.score-sums > div { display: flex; justify-content: space-between; gap: 1rem; }
+.score-sums .cost { color: var(--live); }
+.score-sums .total { font-weight: 900; padding-top: .15rem; }
 
 /* ---- GM panel ----
    The same components as the rest of the app, sized up. The Live tab is used

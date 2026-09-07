@@ -30,7 +30,7 @@ late September 2026), so nothing is time-pressured yet.
 | **1 — schema, views, RLS, seed** | ✅ Done, applied to the live database, smoke test passes |
 | **2 — player panel** | ✅ Done, verified end to end by Elena logging in and making picks |
 | **3 — GM panel** | ✅ **Done.** All five tabs. Live and Episodes have been used in a browser; Entries, Players and Bakers are checked against the live database but **not yet looked at** — see below. |
-| 4 — scoring wired into `/play` | ⬜ (views already exist; this is display) |
+| **4 — scoring wired into `/play`** | ✅ **Done.** SQL applied, smoke test passing, and seen in a browser with real results entered from the GM panel. |
 | 5 — dashboard | ⬜ |
 | 6 — `/bakers`, `/rules`, top-three picks, stats | ⬜ |
 | 7 — avatar builder, visual polish | ⬜ |
@@ -93,10 +93,15 @@ src/
     Link.jsx      internal <a> that keeps cmd-click working
     playerApi.js  /api/player calls + localStorage code
     gmApi.js      /api/gm calls + sessionStorage password
+    scores.js     the scoring snapshot: results, standings, movement, and the
+                  ONE thing the browser derives — the tick. Points never.
     useCountdown.js
+    useRefreshOnFocus.js   why /play has no poll (TECH_PLAN §8)
   components/
     Panel.jsx     the default container; optional scalloped icing head
     Avatar.jsx    coloured circle now, assembled SVG in phase 7
+    Scorecard.jsx how a week went. Plain props, no fetching — phase 5's
+                  prediction wall renders the same ticks.
   pages/          Dashboard · Play · Bakers · Rules · Gm
     gm/           one file per GM tab; Gm.jsx is only the shell
   styles.css      all design tokens
@@ -107,6 +112,7 @@ scripts/
 
 Docs: [RULES.md](RULES.md) (game) · [TECH_PLAN.md](TECH_PLAN.md) (architecture,
 data model, phases) · [DESIGN.md](DESIGN.md) (visual system) ·
+[ASSETS.md](ASSETS.md) (the art brief) ·
 [supabase/README.md](supabase/README.md) (SQL run order and caveats).
 
 ---
@@ -187,47 +193,189 @@ One API rule worth knowing before you touch either tab:
 
 ---
 
-## Next: phase 4, then the dashboard
+## Phase 4: the scorecard on `/play`
 
-**Phase 4 — standings on `/play`.** Each of your picks ticked or crossed once
-results land, this week's points, your position and movement. `api/player.js`
-already returns your `v_standings` row; the rest is display.
+✅ **Applied to the live database on 2026-09-07**, smoke test passing, and looked
+at in a browser with real results entered from the GM panel.
+
+Phase 4 changed `views.sql`, so if you are setting this up again: paste
+`views.sql`, then `rls.sql`, then run `smoke_test.sql`. All three are
+idempotent.
+
+One trap for anyone editing those views again: **`create or replace view` may
+only APPEND columns.** `v_penalties.category` and `v_episode_scores.penalties`
+are both stuck at the end of their column lists rather than beside the columns
+they belong with, for exactly that reason — re-ordering means dropping the view,
+which cascades to everything downstream and drops the grants with it. Check the
+live column order before assuming an edit will paste.
+
+`v_episode_results_public` is what `episode_results` was missing: the browser
+could not show a tick without it. It carries the winner's **name** — the browser
+cannot look one up, because the leaving baker is out of the tent and gone from
+the panel's cast list by the time that result lands — and it carries `voided`,
+because three states have to survive the trip:
+
+```
+no row at all              not decided yet   plainly blank
+one voided row, no baker   Nobody won it     hatched, struck out
+a row with a baker         a winner          ticked or crossed
+```
+
+The join to `bakers` is a **LEFT** join for exactly that reason. An inner join
+drops every Nobody row, which silently collapses the first two states — the bug
+DESIGN §7 and `schema.sql` both warn about, and one that stays invisible until
+the week it matters. The smoke test asserts the row count, so a reflex change
+there fails loudly.
+
+There is **no deadline gate**, unlike `v_public_predictions`, and that is also
+asserted: a result is a fact about a broadcast episode, not a pick.
+
+**Points always come from SQL.** `v_episode_scores` and `v_standings` are read
+straight from the browser with the publishable key — no endpoint, so eight
+phones refreshing all evening costs zero Vercel invocations. The browser derives
+exactly one thing, `verdictFor` in [src/lib/scores.js](src/lib/scores.js):
+whether the baker you named is one of the bakers who won it. Nothing in `src/`
+adds up a category's points, handles a multi-winner category or applies the two
+−1 penalties; `v_prediction_scores` and `v_penalties` stay ungranted, and that is
+the boundary.
+
+**Including *which* pick cost a point.** The panel names the penalty in words —
+"You picked Baker Four for Star Baker, and they went home" — and the temptation
+is to work that out in the browser, since the results and the player's own picks
+are both right there. Don't: that is a second implementation of a scoring rule,
+free to drift from the one that pays out. Instead `v_penalties` carries a
+`category` saying which pick brought the penalty on, and `v_episode_scores`
+aggregates the reasons into a `penalties` jsonb array. The browser looks up the
+row and prints a sentence. If a third penalty is ever added, the panel needs one
+new string in `penaltyWording` and nothing else.
+
+**Movement is the one real derivation.** `v_standings` knows only where you
+stand now, so last week's table is rebuilt from `v_episode_scores` — points from
+the episodes before this one, plus the series bonus, re-ranked with the same
+tie-and-skip rule Postgres uses. Two consequences worth knowing: the bonus
+appears in both tables, so it never produces movement of its own (there is no
+honest alternative — `v_series_bonus` carries no episode); and week one reports
+no movement at all rather than telling everybody below the leader they have
+fallen.
+
+**`/play` refreshes on focus, not on a timer** — see TECH_PLAN §8, which now
+says so. The `/api/player` half of that refresh is skipped while the form has
+unsaved changes, because a fresh `state.picks` re-syncs the form and would throw
+the edits away silently.
+
+### What the four states look like, and why
+
+| State | Look | Why |
+|---|---|---|
+| **Right** | mint tint **and** a tick | Mint never appears instead of the tick — colour never carries information alone (DESIGN §5) |
+| **Wrong** | greyed, no mark, leads with *"It was Baker Three"* | The ordinary outcome, and it costs nothing, so it recedes. That is what leaves room for the rows that DO cost something |
+| **Nobody** | hatched 45° diagonals | Settled, and paid nobody |
+| **Still to come** | plainly blank behind a dashed stitch border | Blank and hatched **must not look alike**; that difference is the whole point (DESIGN §7, RULES §3) |
+
+A **penalty** is not a fifth state but a layer on top: red, with the −1 and the
+sentence naming the pick. Before that, losing a point looked exactly like missing
+one, which was the note Elena sent back — and it is a genuinely different
+outcome.
+
+That red **widens `--live` beyond "the episode is airing" and LATE / VERY LATE**,
+which DESIGN §3 lists as load-bearing. A deliberate call: losing a point is the
+one thing on this panel worth an alarm, it happens at most twice a week, and it
+never shares a screen region with the live indicator. **DESIGN §4's reservation
+line is therefore out of date** — see the note at the end of this file.
+
+The hatch stripe also changed, from `--line` to the ink at 18% alpha. `--line`
+measured 1.15:1 against white as a 2px stripe, which is not a signal. Texture
+strength sits in DESIGN §3's "free" column, but it also changes the GM Live
+tab's voided select, which is the other place `.hatched` is used.
+
+### What phase 4 does not cover
+
+**The scorecard shows one episode** — the current one, meaning the
+lowest-numbered not `complete`. There is no week switcher and no scrolling. So
+the moment you mark an episode complete on the Episodes tab, `/play` moves on to
+next week and last night's ticks disappear from it; the running total in the
+header stays. Phase 5's series recap is where the history belongs, and the data
+is already in `v_episode_scores`. If you want to look at a week for a while,
+leave it `live` rather than `complete`.
+
+**Discussed and deferred:** a one-line "your weeks so far" strip on `/play`
+(`Ep 1 · 1 · Ep 2 · 7 …`). Nearly free — `fetchScoreboard` already pulls every
+episode's points for the movement maths, so it is markup only. Left out so it
+does not become a second dashboard; ask Elena before adding it.
+
+## Then: the dashboard
 
 **Phase 5 — the dashboard.** Leaderboard, cumulative points chart, this week's
 results grid, prediction wall. League resolution is: an explicit `/league/<slug>`
 wins, then the league belonging to the code in `localStorage`, then `is_default`.
 
-**One SQL step is needed for both.** `episode_results` is not anon-readable and
-neither phase can show a tick without it — `rls.sql` already anticipates "in
-phase 5, a results view". Add `v_episode_results_public` to `views.sql`, grant
-it, extend `smoke_test.sql`, and paste both in. A result is a fact about the
-episode rather than a pick, so it needs no deadline gate.
+Two things phase 4 leaves ready for it: `v_episode_results_public` carries
+`season_id`, so the series recap reads a whole season in one query; and
+[src/components/Scorecard.jsx](src/components/Scorecard.jsx) takes plain data
+and fetches nothing, so the prediction wall can render the same ticks per player.
 
-Do that work against the granted views with the publishable key, not through a
-new endpoint: eight phones refreshing all evening then costs zero Vercel
-invocations (TECH_PLAN §8 sets the intervals).
+One thing it will probably want: **`league_id` on `v_episode_scores`.** It has
+none, so `src/lib/scores.js` has to read `v_standings` first just to get the
+player ids. That is a column on a granted view — a permission boundary — but
+`league_id` is already public through `v_players_public`, so it is a small,
+safe change worth making deliberately rather than by reflex.
 
 **Leagues** — later; one league is enough for now.
-
-**`supabase/smoke_test.sql` has not been re-run since phase 3 landed.** Nothing
-in it changed, but the GM panel now writes into the rules it covers.
 
 ---
 
 ## Gotchas that cost time here
 
-**No browser in the agent session.** Elena has looked at `/play` and at the GM
-panel's Live and Episodes tabs, and those are fine. **The Entries, Players and
-Bakers tabs have never been seen by anyone** — they are checked against the
-database, not against a pair of eyes. Nothing else has been seen either,
-including the scalloped icing, whose geometry is arithmetic done on paper.
-`npm run dev` and look, or ask her to. If you have a screenshot tool, use it.
+**There IS a browser: headless Chrome works.** Elena has looked at `/play` and
+at the GM panel's Live and Episodes tabs. **The Entries, Players and Bakers tabs
+have still never been seen by anyone** — they are checked against the database,
+not against a pair of eyes.
+
+```bash
+"/c/Program Files/Google/Chrome/Application/chrome.exe" --headless=new \
+  --disable-gpu --hide-scrollbars --user-data-dir=<a scratch dir> \
+  --virtual-time-budget=5000 --screenshot=<absolute path> \
+  --window-size=420,1200 http://localhost:5178/play
+```
+
+Three things that cost time getting that to work:
+
+- **Chrome will not open a window narrower than ~512 CSS px on this machine.**
+  Ask for 390 and it lays the page out at 512 and screenshots the leftmost 390 —
+  which looks *exactly* like a page overflowing its viewport, and sent me
+  hunting a CSS bug that did not exist. `--force-device-scale-factor` does not
+  help; it doesn't change the layout viewport. To judge a phone, impose the
+  width on the content instead (a 390px wrapper) and shoot a wider window.
+- **Use `--headless=new`, an absolute `--screenshot` path and a scratch
+  `--user-data-dir`.** Old `--headless` crops instead of resizing; a relative
+  path silently fails with "Access is denied".
+- **Measure before believing a layout is broken.** One `getBoundingClientRect`
+  sweep printed into the page settled in one shot what guessing at CSS did not.
 
 **An eliminated baker disappears from `/play`'s pickers immediately**, and
 `savePicks` refuses one (`status=in.(active,finalist,winner)`). Since the
 leaving result now marks bakers out as it is entered, that lands mid-episode.
 It only reaches a VERY LATE player the GM has unlocked: they cannot save a pick
 naming whoever just went. Accepted — they can already see the results anyway.
+
+**An agent session cannot run `smoke_test.sql`.** PostgREST does not execute
+arbitrary SQL, and the database password isn't among the three environment
+variables, so that file needs a human in the Supabase SQL editor — which is also
+why it needs pasting after every `views.sql` change and cannot be automated
+away.
+
+What an agent *can* do, and what was done in phase 4: build the same fixtures
+through the REST API under a **throwaway season**, assert against the views, then
+delete the season — every foreign key down from `seasons` is
+`on delete cascade`, so one delete takes leagues, players, episodes, results,
+entries and predictions with it, and nothing real is touched. All 19 of
+`smoke_test.sql`'s rules still held on 2026-09-07, after phase 3. Keep that
+harness in a scratch directory rather than the repo: `smoke_test.sql` is
+canonical and two copies of the same assertions would drift.
+
+The same trick works for `/api/player`: a fixture player in a throwaway league
+hung off the **real** season exercises the real episodes, categories and bakers
+without touching the real league's standings.
 
 **You can still test `api/` end to end without a browser.** Import a handler
 directly and call it with a fake `req`/`res` — Vercel's handlers are plain
@@ -298,3 +446,10 @@ disable comment.
   a pass.
 - **`is_gm` is a display flag**, not authorisation. The GM panel is gated by the
   password alone.
+
+- **DESIGN §4's `--live` reservation is out of date.** It says the red is
+  reserved for "the episode is airing" and LATE / VERY LATE. Since phase 4 it
+  also marks a **penalty** on the player panel — decided deliberately (see
+  above), but the document hasn't caught up. Elena owns DESIGN.md; suggested
+  wording is in the phase 4 notes. §7's hatching paragraph is still accurate,
+  though the stripe is now the ink at 18% alpha rather than `--line`.

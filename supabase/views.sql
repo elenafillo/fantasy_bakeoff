@@ -121,13 +121,25 @@ where en.is_disallowed is false;
 -- −1 for naming a Best Baker who left, −1 for naming a Leaving Baker who took
 -- Star Baker. Both can fire in the same week, so the floor is −2.
 -- Voided categories cannot trigger either, since `not voided` filters them out.
+--
+-- `category` says which pick of yours brought the penalty on, so the player
+-- panel can put the −1 against that row and explain it in words. It is here,
+-- and not worked out in the browser, for the reason the header states: the rule
+-- lives in SQL once. A browser deciding for itself when a penalty applies would
+-- be a second implementation of a scoring rule, free to drift.
+--
+-- NOTE the column order: `category` is appended rather than sitting beside
+-- `reason` where it belongs. CREATE OR REPLACE VIEW may only add columns to the
+-- END of an existing view's list, and v_episode_scores depends on this one, so
+-- re-ordering would mean dropping both and losing their grants.
 
 create or replace view v_penalties as
 select
   en.player_id,
   en.episode_id,
   'best_left'::text as reason,
-  -1 as points
+  -1 as points,
+  'best'::text as category
 from entries     en
 join predictions pr on pr.entry_id = en.id and pr.category = 'best'
 where en.is_disallowed is false
@@ -145,7 +157,8 @@ select
   en.player_id,
   en.episode_id,
   'leaving_starred'::text,
-  -1
+  -1,
+  'leaving'::text
 from entries     en
 join predictions pr on pr.entry_id = en.id and pr.category = 'leaving'
 where en.is_disallowed is false
@@ -177,7 +190,17 @@ with picks as (
   group by player_id, episode_id
 ),
 pens as (
-  select player_id, episode_id, sum(points) as penalty_points
+  select
+    player_id,
+    episode_id,
+    sum(points) as penalty_points,
+    -- Which picks brought the penalties on, so the panel can put each −1
+    -- against the row that earned it and say why in words. The browser only
+    -- reads this; deciding when a penalty applies stays in v_penalties.
+    jsonb_agg(
+      jsonb_build_object('category', category, 'reason', reason, 'points', points)
+      order by category
+    ) as penalties
   from v_penalties
   group by player_id, episode_id
 )
@@ -191,7 +214,11 @@ select
   coalesce(pk.correct_count, 0)  as correct_count,
   coalesce(pk.picks_made, 0)     as picks_made,
   en.lateness,
-  (en.confirmed_at is not null)  as confirmed
+  (en.confirmed_at is not null)  as confirmed,
+  -- Appended, not placed beside penalty_points where it belongs: CREATE OR
+  -- REPLACE VIEW may only add columns to the end, and v_standings depends on
+  -- this view, so re-ordering would mean dropping both and re-granting them.
+  coalesce(pn.penalties, '[]'::jsonb) as penalties
 from entries  en
 join episodes ep on ep.id = en.episode_id
 left join picks pk on pk.player_id = en.player_id and pk.episode_id = en.episode_id
@@ -308,3 +335,53 @@ select
   e.deadline_at, e.live_at, e.bingo_prompt, e.status, e.is_final,
   (e.deadline_at is not null and e.deadline_at <= now()) as predictions_public
 from episodes e;
+
+-- ------------------------------------------------------------
+-- Results, safe for the browser
+-- ------------------------------------------------------------
+-- What puts a tick or a cross on the player panel and the dashboard.
+--
+-- NO DEADLINE GATE, deliberately — unlike v_public_predictions. A result is a
+-- fact about a broadcast episode, not a pick, and there is nothing here to
+-- protect: a result exists only once the GM has typed what happened, which is
+-- during the episode, long after the deadline. Do not copy the gate in from
+-- v_public_predictions by reflex; the smoke test asserts its absence.
+--
+-- THREE STATES HAVE TO SURVIVE THE TRIP, and the difference between the first
+-- two is load-bearing (RULES §3, DESIGN §7):
+--
+--   not decided yet   no row at all               shown plainly blank
+--   Nobody won it     one row, voided, no baker   shown hatched, struck out
+--   a winner          a row with a baker          shown with a tick or a cross
+--
+-- Hence `voided` is exposed, and the join to bakers is a LEFT join. An inner
+-- join would drop every Nobody row, silently collapsing "Nobody won it" into
+-- "not decided yet" — the exact mistake schema.sql's comment on
+-- episode_results warns against, and invisible until an episode where it
+-- matters.
+--
+-- baker_name rides along because the browser cannot look it up. The leaving
+-- result names a baker whom api/gm.js has, by the time that result lands,
+-- already marked eliminated and dropped from the panel's cast list — so the
+-- player who called it correctly would see a blank where their best pick was.
+-- Names are public regardless: v_baker_stats publishes every one.
+--
+-- season_id rides along so the dashboard's series recap reads a whole season in
+-- one query rather than assembling an episode_id in-list. It is already public
+-- through v_episodes_public.
+--
+-- Deliberately NOT exposed: `id` and `entered_at`. Nothing needs them —
+-- (episode, category, baker) is already unique — and the second is a record of
+-- when the GM happened to be typing.
+
+create or replace view v_episode_results_public as
+select
+  r.episode_id,
+  e.season_id,
+  r.category,
+  r.baker_id,
+  b.name as baker_name,
+  r.voided
+from episode_results r
+join      episodes e on e.id = r.episode_id
+left join bakers   b on b.id = r.baker_id;

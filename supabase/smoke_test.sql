@@ -3,7 +3,8 @@
 -- ============================================================
 -- Paste the whole file into the Supabase SQL editor and run it.
 --
---   a row reading "SMOKE TEST PASSED"  → scoring and the deadline gate behave.
+--   a row reading "SMOKE TEST PASSED"  → scoring, the deadline gate and the
+--                                        three result states all behave.
 --   an ERROR                           → the message names the rule that broke.
 --
 -- The verdict is a SELECT after the rollback, deliberately. RAISE NOTICE does
@@ -33,6 +34,8 @@ declare
   e1 uuid; e2 uuid; e3 uuid;
   got int;
   got_bool boolean;
+  got_text text;
+  got_json jsonb;
 begin
   -- ---- fixtures -------------------------------------------------------
 
@@ -117,6 +120,26 @@ begin
   select count(*) into got from v_penalties where player_id = p2;
   assert got = 2, format('P2 should take both penalties, got %s.', got);
 
+  -- Which pick brought each penalty on. The player panel puts the −1 against
+  -- that category and explains it, so the reason has to survive into the
+  -- granted view — the browser must never work this out for itself.
+  select jsonb_array_length(penalties) into got from v_episode_scores
+    where player_id = p2 and episode_id = ep1;
+  assert got = 2, format('Both of P2''s penalties should be itemised, got %s.', got);
+
+  select penalties into got_json from v_episode_scores
+    where player_id = p2 and episode_id = ep1;
+  assert got_json @> '[{"category": "best", "reason": "best_left", "points": -1}]'::jsonb,
+    format('P2 named a Best Baker who left, against the "best" row. Got %s.', got_json);
+  assert got_json @> '[{"category": "leaving", "reason": "leaving_starred", "points": -1}]'::jsonb,
+    format('P2 named a Leaving Baker who starred, against the "leaving" row. Got %s.', got_json);
+
+  select jsonb_array_length(penalties) into got from v_episode_scores
+    where player_id = p1 and episode_id = ep1;
+  assert got = 0, format(
+    'P1 earned no penalty, so the itemised list is empty rather than null — the panel '
+    'iterates it. Got %s.', got);
+
   -- A voided category pays nobody, and cannot trigger a penalty either.
   select count(*) into got from v_prediction_scores
     where episode_id = ep1 and category = 'handshake' and is_correct;
@@ -187,10 +210,65 @@ begin
     'Only episode 1''s public pick of Baker A for Best Baker should count (P3''s is '
     'disallowed, episodes 2 and 3 are not public yet), got %s.', got);
 
+  -- ---- the results view -----------------------------------------------
+  -- v_episode_results_public is what puts a tick or a cross on the player
+  -- panel. Three states have to survive the trip to the browser, and the
+  -- difference between the first two is load-bearing (RULES §3, DESIGN §7):
+  --
+  --   no row at all              not decided yet   shown plainly blank
+  --   one voided row, no baker   Nobody won it     shown hatched, struck out
+  --   a row with a baker         a winner          shown ticked or crossed
+  --
+  -- Deliberately last in this file: it writes one more result row, which would
+  -- move the scoring and baker-stats numbers asserted above.
+
+  select count(*) into got from v_episode_results_public where episode_id = ep1;
+  assert got = 7, format(
+    'Episode 1 has 7 result rows (best, two leaving, technical, two bingo and one '
+    'voided handshake), got %s. If it is 6, the join to bakers is not a LEFT join '
+    'and the Nobody row has been dropped.', got);
+
+  select count(*) into got from v_episode_results_public
+    where episode_id = ep1 and category = 'handshake'
+      and voided and baker_id is null and baker_name is null;
+  assert got = 1, format(
+    'The voided handshake must arrive as a VOIDED row carrying no baker: "Nobody won '
+    'it" and "not decided yet" are different states and the UI must not be able to '
+    'confuse them. Got %s such row(s).', got);
+
+  select count(*) into got from v_episode_results_public
+    where episode_id = ep1 and category = 'leaving' and not voided;
+  assert got = 2, format(
+    'Both leaving bakers must come through — the panel says what the answer actually '
+    'was, and this week it was two people. Got %s.', got);
+
+  select baker_name into got_text from v_episode_results_public
+    where episode_id = ep1 and category = 'best';
+  assert got_text = 'Baker A', format(
+    'The view has to name the winner. The browser cannot look it up: a leaving baker '
+    'is out of the tent, and gone from the panel''s cast list, by the time the result '
+    'lands. Got %s.', coalesce(got_text, '<null>'));
+
+  select count(*) into got from v_episode_results_public where episode_id = ep2;
+  assert got = 0, format(
+    'Episode 2 has no results, so it must have NO ROWS here. That absence is the only '
+    'way the panel knows a category is still to come. Got %s.', got);
+
+  -- Results are NOT deadline-gated, on purpose: a result is a fact about a
+  -- broadcast episode, not a pick. Episode 3 has no deadline at all — the case
+  -- that makes v_public_predictions fail closed — and a result there must
+  -- still be visible.
+  insert into episode_results (episode_id, category, baker_id) values (ep3, 'technical', baker_d);
+  select count(*) into got from v_episode_results_public where episode_id = ep3;
+  assert got = 1, format(
+    'Episode 3 has no deadline, and its result must still be public: results are facts '
+    'about the episode, not picks. Got %s. If it is 0, the deadline gate has been '
+    'copied in from v_public_predictions.', got);
+
 end $$;
 
 rollback;
 
 -- Reached only if every assertion above held — a failure aborts the script
 -- before this line.
-select 'SMOKE TEST PASSED — scoring and the deadline gate behave. Nothing was written.' as result;
+select 'SMOKE TEST PASSED — scoring, the deadline gate and the three result states behave. Nothing was written.' as result;
