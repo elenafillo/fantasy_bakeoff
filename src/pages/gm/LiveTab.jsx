@@ -66,6 +66,10 @@ export function LiveTab({ state, send, busy }) {
               rows={results.filter((r) => r.category === c.key)}
               busy={busy}
               onSet={(value) => send('setCategory', { category: c.key, value })}
+              // Recording who left also marks them out of the tent. That is a
+              // side effect of this control, so it says so rather than leaving
+              // the GM to notice next week that a picker is one baker short.
+              note={c.key === 'leaving' ? eliminationNote(results, bakers, episode) : null}
             />
           ))}
         </div>
@@ -88,7 +92,7 @@ export function LiveTab({ state, send, busy }) {
  * Extra winners are their own selects. The "add" slot is local state, because
  * an empty slot is not a state the database has — only a chosen baker is sent.
  */
-function Category({ category, bakers, rows, busy, onSet }) {
+function Category({ category, bakers, rows, busy, onSet, note }) {
   const [adding, setAdding] = useState(false)
 
   const voided = rows.some((r) => r.voided)
@@ -170,6 +174,30 @@ function Category({ category, bakers, rows, busy, onSet }) {
           + Add another winner
         </button>
       )}
+
+      {note && <p className="small muted">{note}</p>}
     </div>
   )
+}
+
+/**
+ * What the leaving result just did to the cast. Only names bakers this
+ * episode's own result marked out, which is exactly the set it would put back
+ * if the answer changed — so the note and the undo describe the same thing.
+ */
+function eliminationNote(results, bakers, episode) {
+  const out = results
+    .filter((r) => r.category === 'leaving' && !r.voided)
+    .map((r) => bakers.find((b) => b.id === r.baker_id))
+    .filter((b) => b?.status === 'eliminated' && b.eliminated_episode === episode.number)
+    .map((b) => b.name)
+
+  if (out.length === 0) return null
+
+  const names = out.length === 1
+    ? out[0]
+    : `${out.slice(0, -1).join(', ')} and ${out[out.length - 1]}`
+
+  return `${names} ${out.length === 1 ? 'is' : 'are'} now out of the tent, ` +
+    `and gone from next week's pickers. Change this answer and they go back in.`
 }

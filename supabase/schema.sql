@@ -42,6 +42,18 @@ create table if not exists bakers (
 
 create index if not exists bakers_season_idx on bakers (season_id, status);
 
+-- NOTE: that status = 'eliminated' always has an eliminated_episode, and that
+-- every other status has none, is enforced in api/gm.js (upsertBaker), not
+-- declaratively — the same arrangement as the Nobody/winners invariant below.
+-- It matters because v_baker_stats.weeks_survived reads that column and treats
+-- NULL as "still in", so an elimination with no number quietly counts as a full
+-- run of the series.
+--
+-- api/gm.js also keeps this table in step with the leaving result: naming a
+-- baker as leaving episode N marks them eliminated at N, and taking them back
+-- out of that result puts them back — but only if they are eliminated AT N, so
+-- a withdrawal recorded by hand in another week is never reverted by it.
+
 -- ------------------------------------------------------------
 -- Leagues
 -- ------------------------------------------------------------

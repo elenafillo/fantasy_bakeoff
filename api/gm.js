@@ -2,7 +2,7 @@
 // POST /api/gm — everything the GM does
 // ============================================================
 // Actions: state · setCategory · setEpisode · goLive · toggleDisallow ·
-//          unlockEntry · upsertPlayer · generateCode
+//          unlockEntry · upsertPlayer · generateCode · upsertBaker
 //
 // The password is compared against process.env.GM_PASSWORD on EVERY request.
 // There is no session and no token, deliberately: a session is a second thing
@@ -59,6 +59,8 @@ export default async function handler(req, res) {
         return await upsertPlayer(res, body)
       case 'generateCode':
         return await generateCode(res, body)
+      case 'upsertBaker':
+        return await upsertBaker(res, body)
       default:
         return res.status(400).json({ error: `Unknown action "${body.action}".` })
     }
@@ -292,10 +294,16 @@ async function setCategory(res, body) {
     const cat = encodeURIComponent(category)
     const scope = `episode_id=eq.${episode.id}&category=eq.${cat}`
 
+    // Read the category BEFORE writing it. Who leaves the category matters as
+    // much as who arrives — that difference is what lets a mistaken
+    // elimination be taken back below.
+    const existing = await rest('episode_results', `select=id,baker_id,voided&${scope}`)
+    const wereWinners = existing.filter((r) => !r.voided).map((r) => r.baker_id)
+    let nowWinners = []
+
     if (value === 'undecided') {
       await restDelete('episode_results', scope)
     } else if (value === 'nobody') {
-      const existing = await rest('episode_results', `select=id,voided&${scope}`)
       if (!existing.some((r) => r.voided)) {
         await restInsert('episode_results', {
           episode_id: episode.id,
@@ -317,8 +325,7 @@ async function setCategory(res, body) {
         throw new HttpError(400, 'One of those bakers is not in this season.')
       }
 
-      const existing = await rest('episode_results', `select=id,baker_id,voided&${scope}`)
-      const already = new Set(existing.filter((r) => !r.voided).map((r) => r.baker_id))
+      const already = new Set(wereWinners)
       const missing = bakerIds.filter((id) => !already.has(id))
 
       if (missing.length) {
@@ -339,11 +346,59 @@ async function setCategory(res, body) {
         'episode_results',
         `${scope}&voided=is.false&baker_id=not.in.(${bakerIds.join(',')})`
       )
+      nowWinners = bakerIds
+    }
+
+    if (category === 'leaving') {
+      await syncEliminations(season, episode, wereWinners, nowWinners)
     }
 
     return res.status(200).json(await buildState({ episodeId: episode.id }))
   } catch (err) {
     return fail(res, err)
+  }
+}
+
+/**
+ * Recording who left an episode also marks them out of the tent.
+ *
+ * The two are the same fact, and entering one without the other leaves an
+ * eliminated baker sitting in everybody's picker the following week. So the
+ * leaving result owns it — but only for the bakers it names, and only for its
+ * own episode:
+ *
+ *   named as leaving in episode N  →  eliminated, eliminated_episode = N
+ *   taken back out of episode N    →  active again, but ONLY if they are
+ *                                     currently eliminated AT N
+ *
+ * That second filter is the whole safety of doing this automatically. Changing
+ * a mis-entered elimination undoes itself, while a baker marked out by hand in
+ * another week — a withdrawal, an illness, someone who left for reasons that
+ * were never an elimination — is never touched by a result that did not name
+ * them. Bakers left the tent for their own reasons long before this code ran.
+ *
+ * The final has no `leaving` category at all (seed.sql: applies_to 'regular'),
+ * so this cannot fire against a finalist.
+ */
+async function syncEliminations(season, episode, before, after) {
+  const arrived = after.filter((id) => !before.includes(id))
+  const gone = before.filter((id) => !after.includes(id))
+
+  if (arrived.length) {
+    await restPatch(
+      'bakers',
+      `season_id=eq.${season.id}&id=in.(${arrived.join(',')})`,
+      { status: 'eliminated', eliminated_episode: episode.number }
+    )
+  }
+
+  if (gone.length) {
+    await restPatch(
+      'bakers',
+      `season_id=eq.${season.id}&id=in.(${gone.join(',')})` +
+        `&status=eq.eliminated&eliminated_episode=eq.${episode.number}`,
+      { status: 'active', eliminated_episode: null }
+    )
   }
 }
 
@@ -452,6 +507,116 @@ async function goLive(res, body) {
   } catch (err) {
     return fail(res, err)
   }
+}
+
+// ------------------------------------------------------------
+// Bakers — the cast
+// ------------------------------------------------------------
+// THE INVARIANT THE SCHEMA DOES NOT HOLD: a baker whose status is 'eliminated'
+// has an eliminated_episode, and a baker with any other status has none.
+// v_baker_stats.weeks_survived reads that column, and a NULL there means "still
+// in", so an elimination without a number quietly counts as a full run of the
+// series. It is enforced here, in the one endpoint that writes the table, the
+// same way the Nobody/winners invariant is (see setCategory).
+//
+// There is no delete, for the same reason there is no delete on players: it
+// cascades to every prediction naming them. Renaming is what you actually want
+// when the real cast is announced — the ids stay put, so test picks survive.
+
+const BAKER_STATUSES = ['active', 'eliminated', 'finalist', 'winner']
+
+async function upsertBaker(res, body) {
+  try {
+    const season = await activeSeason()
+    // Only for the default elimination episode, so a missing one is not fatal.
+    const episode = isUuid(body.episodeId)
+      ? (await rest('episodes', `select=number&id=eq.${body.episodeId}&season_id=eq.${season.id}&limit=1`))[0]
+      : null
+
+    const cast = await rest('bakers', `select=*&season_id=eq.${season.id}`)
+    const name = typeof body.name === 'string' ? body.name.trim() : ''
+
+    let current = null
+    if (body.bakerId !== undefined) {
+      if (!isUuid(body.bakerId)) throw new HttpError(400, 'Which baker?')
+      current = cast.find((b) => b.id === body.bakerId) ?? null
+      if (!current) throw new HttpError(404, 'No such baker in this season.')
+    }
+
+    if ('name' in body || !current) {
+      if (!name) throw new HttpError(400, 'A baker needs a name.')
+      const clash = cast.find(
+        (b) => b.id !== current?.id && b.name.toLowerCase() === name.toLowerCase()
+      )
+      if (clash) throw new HttpError(400, `There is already a ${clash.name} in this season.`)
+    }
+
+    const patch = {}
+    if ('name' in body || !current) patch.name = name
+    if ('bio_line' in body) patch.bio_line = blankToNull(body.bio_line)
+    if ('photo_url' in body) patch.photo_url = blankToNull(body.photo_url)
+    if ('sort_order' in body) patch.sort_order = wholeNumber(body.sort_order, 'sort order')
+
+    // status and eliminated_episode always travel together, whichever of them
+    // the request names — that is what makes the invariant hold after every
+    // write rather than after most of them.
+    if ('status' in body || 'eliminated_episode' in body || !current) {
+      const status = 'status' in body ? String(body.status) : (current?.status ?? 'active')
+      if (!BAKER_STATUSES.includes(status)) {
+        throw new HttpError(400, `Status is one of ${BAKER_STATUSES.join(', ')}.`)
+      }
+      patch.status = status
+      patch.eliminated_episode =
+        status === 'eliminated'
+          ? leftInEpisode(season, body.eliminated_episode, current, episode)
+          : null
+    }
+
+    if (current) {
+      if (Object.keys(patch).length === 0) throw new HttpError(400, 'Nothing to change.')
+      await restPatch('bakers', `id=eq.${current.id}`, patch)
+    } else {
+      await restInsert('bakers', {
+        season_id: season.id,
+        sort_order: patch.sort_order ?? cast.reduce((m, b) => Math.max(m, b.sort_order), 0) + 1,
+        ...patch,
+      })
+    }
+
+    return res.status(200).json(await buildState(body))
+  } catch (err) {
+    return fail(res, err)
+  }
+}
+
+/**
+ * Which episode a baker left in. Falls back to the number already stored, then
+ * to whichever episode the panel is showing — so marking someone out on the
+ * night is one tap, and a status edit that says nothing about the episode does
+ * not silently move it.
+ */
+function leftInEpisode(season, raw, current, episode) {
+  const blank = raw === null || raw === undefined || raw === ''
+  const n = blank ? (current?.eliminated_episode ?? episode?.number) : Number(raw)
+
+  if (!Number.isInteger(n) || n < 1 || n > season.episode_count) {
+    throw new HttpError(
+      400,
+      `Which episode did they leave in? A number from 1 to ${season.episode_count}.`
+    )
+  }
+  return n
+}
+
+function blankToNull(raw) {
+  const s = raw === null || raw === undefined ? '' : String(raw).trim()
+  return s === '' ? null : s
+}
+
+function wholeNumber(raw, what) {
+  const n = Number(raw)
+  if (!Number.isInteger(n)) throw new HttpError(400, `The ${what} has to be a whole number.`)
+  return n
 }
 
 // ------------------------------------------------------------

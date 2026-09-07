@@ -334,6 +334,10 @@ a { color: inherit; }
 .roster-actions { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
 .roster-row .deadline { margin-bottom: 0; }
 
+/* A baker who is out of the tent. Grey, but never grey alone — the row keeps
+   its status pill, which carries the word and the episode. */
+.roster-row.gone strong { color: var(--ink-soft); }
+
 .picks-list { list-style: none; margin: 0; padding: 0; font-size: .875rem; }
 .picks-list li { display: flex; gap: .4rem; justify-content: space-between; }
 .picks-list .muted { text-transform: uppercase; font-size: .72rem; font-weight: 800; letter-spacing: .04em; }

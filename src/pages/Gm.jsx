@@ -5,6 +5,7 @@ import { LiveTab } from './gm/LiveTab.jsx'
 import { EpisodesTab } from './gm/EpisodesTab.jsx'
 import { EntriesTab } from './gm/EntriesTab.jsx'
 import { PlayersTab } from './gm/PlayersTab.jsx'
+import { BakersTab } from './gm/BakersTab.jsx'
 
 /**
  * The GM control room.
@@ -126,6 +127,7 @@ const TABS = [
   ['episodes', 'Episodes', EpisodesTab],
   ['entries', 'Entries', EntriesTab],
   ['players', 'Players', PlayersTab],
+  ['bakers', 'Bakers', BakersTab],
 ]
 
 function Console({ state, password, setState, onLock }) {
@@ -203,11 +205,6 @@ function Console({ state, password, setState, onLock }) {
         <Active state={state} send={send} busy={busy} />
       )}
 
-      <Panel>
-        <p className="small muted" style={{ marginBottom: 0 }}>
-          Bakers is next — until then, the cast is set up in SQL.
-        </p>
-      </Panel>
     </>
   )
 }
