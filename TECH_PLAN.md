@@ -313,8 +313,13 @@ means retyping it one-handed. Then tabs:
   The GM plays too, so this tab shows how many picks each player has made and
   not what they are, until the deadline passes. Same rule as
   `v_public_predictions`, enforced in `api/gm.js` for the same reason.
-- **Players** — add players, issue codes, assign colour, per league.
-- **Bakers** — the cast, photos, bios, elimination status.
+- **Players** — add players, issue codes, assign colour, per league. No delete:
+  it cascades to every entry and prediction, and a name typed wrong can be
+  retyped.
+- **Bakers** — the cast, photos, bios, elimination status. Marking someone out
+  needs the episode they left in, which is why the leaving result fills it in
+  for you — but the control stands on its own, because bakers also leave for
+  reasons that were never an elimination.
 - **Leagues** — create and manage parallel leagues; set the default.
 
 ---
@@ -342,9 +347,16 @@ now > live_at, gm_unlocked_at is set     → very_late
 `process.env.GM_PASSWORD` on every call (no sessions, no tokens — same as
 worm-street).
 
-Built: `state` · `setCategory` · `setEpisode` · `goLive`.
-To come: `toggleDisallow` · `unlockEntry` · `upsertPlayer` · `upsertBaker` ·
-`generateCode` · `createLeague`.
+Built: `state` · `setCategory` · `setEpisode` · `goLive` · `toggleDisallow` ·
+`unlockEntry` · `upsertPlayer` · `generateCode` · `upsertBaker`.
+To come: `createLeague`.
+
+`upsertBaker` holds an invariant the schema does not: `eliminated` always
+carries an `eliminated_episode` and every other status carries none, because
+`v_baker_stats.weeks_survived` reads that column and treats NULL as "still in".
+`setCategory('leaving')` writes it too — naming who left also marks them out —
+and reverses itself if the answer changes, but only for a baker eliminated in
+that same episode, so a withdrawal recorded by hand survives.
 
 `setCategory` replaced the four verbs this section originally sketched
 (`setResult · addResult · clearResult · setNobody`). One request states a
@@ -473,7 +485,7 @@ before we're finished.
 | **0** | ✅ Repo scaffolded, Supabase project, deployed to Vercel, shell live | everything |
 | **1** | ✅ *written* — schema, views, RLS, seed, smoke test and the code generator in [supabase/](supabase/). **Not yet applied**: paste them in the order in [supabase/README.md](supabase/README.md). Bakers and air dates wait on the announcement. | 2, 3 |
 | **2** | ✅ `/play` — login, prediction panel, deadline countdown, Confirm, lateness | playable |
-| **3** | 🟡 `/gm` — Live results entry and Episodes are done and deployed. Entries (Disallow, unlock), Players and Bakers remain. | scoring |
+| **3** | ✅ `/gm` — all five tabs: Live, Episodes, Entries, Players, Bakers. | scoring |
 | **4** | Scoring views wired up; standings on `/play` | 5 |
 | **5** | `/` dashboard — chart, leaderboard, results grid, prediction wall | showable |
 | **6** | `/bakers`, `/rules`, top-three picks and series bonuses, stats strip | — |

@@ -29,14 +29,14 @@ late September 2026), so nothing is time-pressured yet.
 | **0 — scaffold** | ✅ Done, deployed |
 | **1 — schema, views, RLS, seed** | ✅ Done, applied to the live database, smoke test passes |
 | **2 — player panel** | ✅ Done, verified end to end by Elena logging in and making picks |
-| **3 — GM panel** | 🟡 **Half.** `api/gm.js` and the Live and Episodes tabs are done, deployed and opened in a browser. Entries, Players and Bakers remain — see below. |
+| **3 — GM panel** | ✅ **Done.** All five tabs. Live and Episodes have been used in a browser; Entries, Players and Bakers are checked against the live database but **not yet looked at** — see below. |
 | 4 — scoring wired into `/play` | ⬜ (views already exist; this is display) |
 | 5 — dashboard | ⬜ |
 | 6 — `/bakers`, `/rules`, top-three picks, stats | ⬜ |
 | 7 — avatar builder, visual polish | ⬜ |
 
-Live database state: league **In The Oven** (`in-the-oven`, default), 1 player
-(Elena, GM), 12 placeholder bakers, 10 episodes with no air dates.
+Live database state: league **In The Oven** (`in-the-oven`, default), 2 players,
+12 placeholder bakers, 10 episodes with no air dates.
 
 ---
 
@@ -76,12 +76,14 @@ key in `src/lib/supabase.js` is public by design and ships in the bundle.
 ```
 api/
   _supabase.js    service-role REST helpers. THE SECRET LIVES HERE ONLY.
-  _codes.js       normaliseCode — canonical; scripts/ imports it from here
-  _wordlists.js   code words + identity colours; scripts/ imports these too
+  _codes.js       normaliseCode + issueCode — canonical; scripts/ calls both
+  _wordlists.js   code words + identity colours; splitCode/prettyCode
   _episodes.js    which episode is "this week", which categories apply.
                   Shared: two answers would put the panels on different weeks.
   player.js       login · state · savePicks · confirm. Lateness + lock rules.
-  gm.js           state · setCategory · setEpisode · goLive. Password every call.
+  gm.js           state · setCategory · setEpisode · goLive · toggleDisallow ·
+                  unlockEntry · upsertPlayer · generateCode · upsertBaker.
+                  Password every call.
   health.js       env-var presence check (booleans only, never values)
 src/
   App.jsx         routes + nav (/gm is deliberately not in the nav)
@@ -96,6 +98,7 @@ src/
     Panel.jsx     the default container; optional scalloped icing head
     Avatar.jsx    coloured circle now, assembled SVG in phase 7
   pages/          Dashboard · Play · Bakers · Rules · Gm
+    gm/           one file per GM tab; Gm.jsx is only the shell
   styles.css      all design tokens
 supabase/         SQL — see supabase/README.md for run order
 scripts/
@@ -136,6 +139,17 @@ people are all normal.
 
 **Episodes** — theme, air date, deadline, bingo prompt, status, and Go live.
 
+**Entries** — the roster for this episode: who has submitted, how late, the
+**Disallow** checkbox and **Open the door**. It lists *players*, not entries,
+because the person who needs a door opened is usually the person who has not
+submitted at all.
+
+**Players** — add someone, rename them, recolour them, reissue a lost code.
+Codes are shown in full; this is the screen you come to when one goes missing.
+
+**Bakers** — rename the placeholders when the cast lands, mark eliminations, set
+`finalist` / `winner` at the end.
+
 One API rule worth knowing before you touch either tab:
 
 - **`setCategory` states a category's whole answer** — `'undecided'`,
@@ -154,44 +168,66 @@ One API rule worth knowing before you touch either tab:
   well as runs it, so the Entries data carries `picks_made` and withholds
   `picks` until `deadline_at` has passed — the same rule as
   `v_public_predictions`, applied at the other end of the wire.
+- **Opening a door creates an entry if there isn't one.** `lockState` in
+  `api/player.js` reads `gm_unlocked_at` off an entry row, so there has to be
+  one. The placeholder takes the default lateness rather than being stamped very
+  late up front, because `savePicks` recomputes lateness on every save. Closing
+  an unused door deletes it again, so an unlock nobody walked through does not
+  leave a phantom 0-point entry in the standings.
+- **Recording who left also marks them out of the tent.** They are the same
+  fact, and doing only the first leaves an eliminated baker in everyone's picker
+  next week. It reverts itself if the answer changes — but only for a baker
+  eliminated *in that episode*, which is what keeps a withdrawal recorded by
+  hand from being undone by a result that never named them.
+- **Codes are issued by `issueCode` in `api/_codes.js`**, which
+  `scripts/generate-players.mjs` also calls. No word repeats inside a league
+  (codes get read aloud in one room); no code repeats anywhere (`code_norm` is
+  globally unique). Reissuing counts the player's current code as part of the
+  roster, so the new one shares no word with the old.
 
 ---
 
-## Next: finish phase 3, then scoring
+## Next: phase 4, then the dashboard
 
-**Entries** — every entry with its lateness flag, the **Disallow** checkbox, and
-**Open the door** (sets `entries.gm_unlocked_at`) to let one player submit after
-the episode has started. `state` already returns the rows; this needs
-`toggleDisallow` and `unlockEntry` plus the tab.
+**Phase 4 — standings on `/play`.** Each of your picks ticked or crossed once
+results land, this week's points, your position and movement. `api/player.js`
+already returns your `v_standings` row; the rest is display.
 
-**Players** — add players, issue codes, set colours. `generateCode` should reuse
-the rule in `scripts/generate-players.mjs`: no word repeated across a roster,
-because codes get read aloud across a noisy room. Colours come from
-`IDENTITY_COLOURS` and are unique per league (there is a partial unique index).
+**Phase 5 — the dashboard.** Leaderboard, cumulative points chart, this week's
+results grid, prediction wall. League resolution is: an explicit `/league/<slug>`
+wins, then the league belonging to the code in `localStorage`, then `is_default`.
 
-**Bakers** — rename the placeholders when the cast is announced, mark
-eliminations, set `finalist` / `winner` at the end. One invariant the schema
-does not hold: **setting a baker to `eliminated` should set
-`eliminated_episode`** — `v_baker_stats.weeks_survived` reads it — and clearing
-that status should clear the number.
+**One SQL step is needed for both.** `episode_results` is not anon-readable and
+neither phase can show a tick without it — `rls.sql` already anticipates "in
+phase 5, a results view". Add `v_episode_results_public` to `views.sql`, grant
+it, extend `smoke_test.sql`, and paste both in. A result is a fact about the
+episode rather than a pick, so it needs no deadline gate.
+
+Do that work against the granted views with the publishable key, not through a
+new endpoint: eight phones refreshing all evening then costs zero Vercel
+invocations (TECH_PLAN §8 sets the intervals).
 
 **Leagues** — later; one league is enough for now.
 
-Then **phase 4** (standings on `/play`) and **phase 5** (the dashboard), which
-are what turn a working entry form into a game you can watch. Both read the
-`v_*` views with the publishable key and need no new endpoint.
-
-After phase 3, re-run `supabase/smoke_test.sql` — it covers the scoring rules the
-GM panel writes into.
+**`supabase/smoke_test.sql` has not been re-run since phase 3 landed.** Nothing
+in it changed, but the GM panel now writes into the rules it covers.
 
 ---
 
 ## Gotchas that cost time here
 
-**No browser in the agent session.** Elena has now looked at `/play` and at the
-GM panel's Live and Episodes tabs, and both are fine. Nothing else has been seen
-— including the scalloped icing, whose geometry is arithmetic done on paper.
+**No browser in the agent session.** Elena has looked at `/play` and at the GM
+panel's Live and Episodes tabs, and those are fine. **The Entries, Players and
+Bakers tabs have never been seen by anyone** — they are checked against the
+database, not against a pair of eyes. Nothing else has been seen either,
+including the scalloped icing, whose geometry is arithmetic done on paper.
 `npm run dev` and look, or ask her to. If you have a screenshot tool, use it.
+
+**An eliminated baker disappears from `/play`'s pickers immediately**, and
+`savePicks` refuses one (`status=in.(active,finalist,winner)`). Since the
+leaving result now marks bakers out as it is entered, that lands mid-episode.
+It only reaches a VERY LATE player the GM has unlocked: they cannot save a pick
+naming whoever just went. Accepted — they can already see the results anyway.
 
 **You can still test `api/` end to end without a browser.** Import a handler
 directly and call it with a fake `req`/`res` — Vercel's handlers are plain
