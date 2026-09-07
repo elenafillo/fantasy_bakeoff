@@ -25,7 +25,7 @@ export default async function handler(req, res) {
   const body = jsonBody(req)
   if (!body) return res.status(400).json({ error: 'Malformed JSON body.' })
 
-  if (!process.env.GM_PASSWORD) {
+  if (!gmPassword()) {
     // Refusing to run without a password is the only safe failure. An empty
     // env var must never mean "no password required" — this endpoint can
     // rewrite every result in the game.
@@ -63,15 +63,27 @@ export default async function handler(req, res) {
 // ------------------------------------------------------------
 
 /**
+ * Both sides are trimmed. A password pasted into a hosting dashboard picks up a
+ * trailing newline about as often as not, and the resulting failure is
+ * invisible from both ends: the env var looks right in the UI, the typed
+ * password looks right in the box, and the only symptom is a panel that will
+ * not open. Nobody's password deliberately ends in a space.
+ */
+function gmPassword() {
+  return (process.env.GM_PASSWORD ?? '').trim()
+}
+
+/**
  * Compared over SHA-256 digests rather than the strings themselves: equal
  * lengths, so timingSafeEqual cannot throw and the comparison does not leak the
  * password's length. Nobody is timing-attacking a bake-off league, but this is
  * three lines and the alternative is a habit worth not having.
  */
 function passwordMatches(given) {
-  if (typeof given !== 'string' || given.length === 0) return false
+  const typed = typeof given === 'string' ? given.trim() : ''
+  if (typed.length === 0) return false
   const digest = (s) => crypto.createHash('sha256').update(s, 'utf8').digest()
-  return crypto.timingSafeEqual(digest(given), digest(process.env.GM_PASSWORD))
+  return crypto.timingSafeEqual(digest(typed), digest(gmPassword()))
 }
 
 // ------------------------------------------------------------
