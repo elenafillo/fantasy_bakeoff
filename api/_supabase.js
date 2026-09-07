@@ -32,6 +32,18 @@ export function jsonBody(req) {
   }
 }
 
+/**
+ * Ids from a request body end up interpolated into PostgREST query strings, and
+ * a query string is a place where `&` means something. An id of
+ * `x&is_gm=eq.true` would append a filter of the caller's choosing to a query
+ * running under the service role. Everything from a client is checked with this
+ * before it goes near a URL.
+ */
+export function isUuid(v) {
+  return typeof v === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
+}
+
 export function serviceHeaders() {
   return {
     apikey: SUPABASE_SERVICE_ROLE_KEY,

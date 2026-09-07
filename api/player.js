@@ -16,8 +16,9 @@
 //   * the lock after an episode starts airing is enforced HERE, because a
 //     disabled button is not a rule.
 
-import { rest, restInsert, restPatch, restDelete, jsonBody } from './_supabase.js'
+import { rest, restInsert, restPatch, restDelete, jsonBody, isUuid } from './_supabase.js'
 import { normaliseCode } from './_codes.js'
+import { currentEpisode, categoriesFor } from './_episodes.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only.' })
@@ -74,27 +75,6 @@ async function findPlayer(norm) {
   return rows[0] ?? null
 }
 
-/**
- * The episode the panel is about: the lowest-numbered one not yet complete.
- *
- * Numbers rather than dates, because air dates are NULL until the schedule is
- * announced — ordering by a column that is entirely null would make the panel
- * pick an arbitrary episode for the first few weeks of the project's life.
- */
-async function currentEpisode(seasonId) {
-  const open = await rest(
-    'episodes',
-    `select=*&season_id=eq.${seasonId}&status=neq.complete&order=number.asc&limit=1`
-  )
-  if (open[0]) return open[0]
-  // Series over: show the final rather than nothing.
-  const done = await rest(
-    'episodes',
-    `select=*&season_id=eq.${seasonId}&order=number.desc&limit=1`
-  )
-  return done[0] ?? null
-}
-
 // ------------------------------------------------------------
 // The lock and lateness rules — RULES §2.4 and §2.5
 // ------------------------------------------------------------
@@ -129,12 +109,6 @@ function lockState(episode, entry, now) {
   if (deadline && now >= deadline) return { lateness: 'late' }
 
   return { lateness: 'on_time' }
-}
-
-/** The categories that apply to this episode. The final has its own card. */
-function applicable(categories, episode) {
-  const want = episode.is_final ? 'final' : 'regular'
-  return categories.filter((c) => c.applies_to === 'both' || c.applies_to === want)
 }
 
 // ------------------------------------------------------------
@@ -187,7 +161,7 @@ async function buildState(player) {
     },
     league: player.leagues,
     episode,
-    categories: episode ? applicable(allCategories, episode) : [],
+    categories: episode ? categoriesFor(allCategories, episode) : [],
     bakers,
     picks,
     entry: entry && {
@@ -213,7 +187,7 @@ async function buildState(player) {
 
 async function savePicks(res, player, body) {
   const { episodeId, picks } = body
-  if (!episodeId || typeof picks !== 'object' || picks === null) {
+  if (!isUuid(episodeId) || typeof picks !== 'object' || picks === null) {
     return res.status(400).json({ error: 'episodeId and picks are required.' })
   }
 
@@ -240,7 +214,7 @@ async function savePicks(res, player, body) {
   // ---- validate before writing anything ----
 
   const allCategories = await rest('categories', 'select=*')
-  const allowed = new Set(applicable(allCategories, episode).map((c) => c.key))
+  const allowed = new Set(categoriesFor(allCategories, episode).map((c) => c.key))
 
   const validBakers = await rest(
     'bakers',
@@ -309,7 +283,7 @@ async function savePicks(res, player, body) {
 
 async function confirm(res, player, body) {
   const { episodeId, confirmed } = body
-  if (!episodeId) return res.status(400).json({ error: 'episodeId is required.' })
+  if (!isUuid(episodeId)) return res.status(400).json({ error: 'episodeId is required.' })
 
   const episodes = await rest(
     'episodes',
