@@ -254,7 +254,11 @@ BAKE OFF     TABLE · PLAY · BAKERS · RULES
 `/` resolves in this order:
 
 1. **A code in `localStorage`** → that player's league. Your friends open the
-   link and land on their own table, automatically.
+   link and land on their own table, automatically. Resolving a code to a league
+   would need `/api/player`, so `/play` caches `{ playerId, leagueSlug }` under
+   `fbo.who` on every successful login — both public facts, and it keeps the
+   dashboard at zero invocations. A browser that logged in before that existed
+   spends one call on its first visit and caches the answer.
 2. **Nothing stored** → the league flagged `is_default`. With one league running,
    that's everybody.
 
@@ -282,9 +286,16 @@ people will be watching on the sofa with their phone in hand, so this is
   face, filling in live. Categories won by Nobody struck through; ones the GM
   hasn't reached yet left blank.
 - **Prediction wall** — everyone's picks, ticking green/red as results land, with
-  LATE / VERY LATE flags next to names. The bit people will shout at.
-- **Series recap** — episodes × categories, who won what.
+  LATE / VERY LATE flags next to names. The bit people will shout at. Built as a
+  table — players down, categories across — because that scales to sixteen
+  players where cards don't, and because reading *down* a column is what people
+  do with it. It is the one place other than the chart that scrolls sideways.
+- **Series recap** — episodes × categories, who won what. ✅ built in phase 5;
+  it is where last night's ticks live once an episode is marked complete, since
+  the results grid follows the same "current episode" rule as `/play`.
 - **Top Three board** — from episode 2, everyone's three, dead ones greyed.
+  **Phase 6**, and it needs SQL: `top_picks` is ungranted and no granted view
+  says who is in whose three, so a board needs a new view as well as the API.
 - **Stats strip** — most-picked baker of the week, best lone call (something only
   one person got right), per-player accuracy by category, the
   most-predicted-to-leave baker who keeps surviving, biggest weekly haul.
@@ -540,7 +551,7 @@ before we're finished.
 | **2** | ✅ `/play` — login, prediction panel, deadline countdown, Confirm, lateness | playable |
 | **3** | ✅ `/gm` — all five tabs: Live, Episodes, Entries, Players, Bakers. | scoring |
 | **4** | ✅ Scoring wired up; the scorecard and standings on `/play`. Adds `v_episode_results_public` — **paste `views.sql` and `rls.sql` again** | 5 |
-| **5** | `/` dashboard — chart, leaderboard, results grid, prediction wall | showable |
+| **5** | ✅ `/` dashboard — chart, leaderboard, results grid, prediction wall, and the series recap from §5. **No SQL**: every view it needs was already granted, so there is nothing to paste. | showable |
 | **6** | `/bakers`, `/rules`, top-three picks and series bonuses, stats strip | — |
 | **7** | Avatar builder with your friend's SVGs; visual design pass | — |
 

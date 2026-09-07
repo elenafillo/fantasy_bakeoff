@@ -31,7 +31,7 @@ late September 2026), so nothing is time-pressured yet.
 | **2 — player panel** | ✅ Done, verified end to end by Elena logging in and making picks |
 | **3 — GM panel** | ✅ **Done.** All five tabs. Live and Episodes have been used in a browser; Entries, Players and Bakers are checked against the live database but **not yet looked at** — see below. |
 | **4 — scoring wired into `/play`** | ✅ **Done.** SQL applied, smoke test passing, and seen in a browser with real results entered from the GM panel. |
-| 5 — dashboard | ⬜ |
+| **5 — dashboard** | ✅ **Done.** Chart, leaderboard, results grid, prediction wall and the series recap. No SQL changes. Looked at on a phone. |
 | 6 — `/bakers`, `/rules`, top-three picks, stats | ⬜ |
 | 7 — avatar builder, visual polish | ⬜ |
 
@@ -95,13 +95,21 @@ src/
     gmApi.js      /api/gm calls + sessionStorage password
     scores.js     the scoring snapshot: results, standings, movement, and the
                   ONE thing the browser derives — the tick. Points never.
+    dashboard.js  the dashboard's reads and league resolution — and a SECOND
+                  copy of pickCurrent. Change one, change the other.
     useCountdown.js
     useRefreshOnFocus.js   why /play has no poll (TECH_PLAN §8)
+    usePopKey.js  restarts the score-change animation; scorecard + leaderboard
   components/
     Panel.jsx     the default container; optional scalloped icing head
     Avatar.jsx    coloured circle now, assembled SVG in phase 7
-    Scorecard.jsx how a week went. Plain props, no fetching — phase 5's
-                  prediction wall renders the same ticks.
+    Mark.jsx      the tick and the cross, shared by the scorecard and the wall
+    Scorecard.jsx how a week went. Plain props, no fetching.
+    Leaderboard.jsx  the table, the reorder, and the chart's controls
+    PointsChart.jsx  hand-rolled SVG; three line states, table fallback
+    ResultsGrid.jsx  this week, in three states that must not look alike
+    PredictionWall.jsx  everyone's picks — empty until the deadline, by design
+    SeriesRecap.jsx  every week so far, collapsed
   pages/          Dashboard · Play · Bakers · Rules · Gm
     gm/           one file per GM tab; Gm.jsx is only the shell
   styles.css      all design tokens
@@ -303,22 +311,125 @@ leave it `live` rather than `complete`.
 episode's points for the movement maths, so it is markup only. Left out so it
 does not become a second dashboard; ask Elena before adding it.
 
-## Then: the dashboard
+## Phase 5: the dashboard
 
-**Phase 5 — the dashboard.** Leaderboard, cumulative points chart, this week's
-results grid, prediction wall. League resolution is: an explicit `/league/<slug>`
-wins, then the league belonging to the code in `localStorage`, then `is_default`.
+✅ **Done.** Chart, leaderboard, results grid, prediction wall and the series
+recap, at `/` and `/league/<slug>`. **No SQL changed**, so there is nothing to
+paste and the smoke test is unaffected.
 
-Two things phase 4 leaves ready for it: `v_episode_results_public` carries
-`season_id`, so the series recap reads a whole season in one query; and
-[src/components/Scorecard.jsx](src/components/Scorecard.jsx) takes plain data
-and fetches nothing, so the prediction wall can render the same ticks per player.
+**Still no endpoint, and that is the point.** Everything reads granted views
+with the publishable key, so this page on a screen all evening plus eight phones
+in the room costs zero Vercel invocations — which is what makes the 4s poll
+affordable (TECH_PLAN §6, §8). It polls on a timer where `/play` refreshes on
+focus, and the two are opposites deliberately: points landing live while
+everyone watches is the whole product, and nobody will tab away and back to find
+out whether Star Baker has been called. 4s while the episode is `live`, 30s
+otherwise.
 
-One thing it will probably want: **`league_id` on `v_episode_scores`.** It has
-none, so `src/lib/scores.js` has to read `v_standings` first just to get the
-player ids. That is a column on a granted view — a permission boundary — but
-`league_id` is already public through `v_players_public`, so it is a small,
-safe change worth making deliberately rather than by reflex.
+`src/lib/dashboard.js` splits the reads in two. Categories and baker names are
+fetched **once** — they don't change during an episode, and it keeps
+`v_baker_stats`, a view of twelve correlated subqueries, out of a four-second
+loop. Everything else is the poll, in two waves, because `v_episode_scores` and
+`v_public_predictions` carry no `league_id` and have to be filtered by the
+player ids only `v_standings` can supply. **That filter is load-bearing, not
+tidiness:** seasons are shared across leagues by design, so both views hold rows
+for every league running the series, and dropping it would put a stranger's
+picks on this league's wall.
+
+**`league_id` on `v_episode_scores` was considered and not done.** The note that
+used to live here assumed it would save a round trip. It doesn't: the wall also
+needs an `episode_id`, and episodes need the `season_id` off the league, so the
+page is a two-wave chain either way. What it would buy is one poll becoming a
+single parallel batch — about 200ms inside a 4s interval, in exchange for a
+permission-boundary edit and a smoke-test paste. Worth revisiting only if
+something else wants it.
+
+**League resolution:** an explicit `/league/<slug>`, then the league belonging
+to the code in `localStorage`, then `is_default`. Resolving a code to a league
+needs `/api/player`, so `/play` now caches the answer: `fbo.who` holds
+`{ playerId, leagueSlug }`, written on every successful `state` call. Both are
+public facts — `v_players_public` publishes every id, name and colour — and the
+code stays in its own key. A browser that logged in before this existed spends
+**one** invocation on its first dashboard load and caches the result; it never
+happens on a poll. Looking at somebody else's league says so quietly, with a
+link back to your own.
+
+**`pickCurrent` is now in two places.** `src/lib/dashboard.js` has its own copy
+of "the lowest-numbered episode not yet complete", and of `categoriesFor`,
+because `src/` cannot import `api/_episodes.js` — that pulls in `_supabase.js`
+and the service-role key with it. Both files carry a comment naming the other.
+**Change one, change the other**, or `/play` and `/` will be on different weeks.
+
+### The chart
+
+Hand-rolled SVG, no library. The constraint it is built around is that only four
+series hues are validated and there are sixteen identity colours, so it has to
+work with a dozen lines that cannot be told apart by hue:
+
+- **Three states per line** — full, muted at 25%, hidden — cycled by tapping a
+  leaderboard row or a legend chip. Everyone starts muted bar the top three and
+  you, and that default is set once from the first table that arrives and then
+  left alone. It is a starting point, not a rule that reasserts itself over the
+  reader every time the table reshuffles.
+- **Direct labels are drawn in ink with a short dash of the player's colour**,
+  not in the colour itself. Aqua is 2.82:1 on white, which carries a 2.5px line
+  and fails a 12px word. The dash carries the hue, the ink carries the name.
+- **A plain table of the same numbers** behind a toggle. Not optional.
+- Colour follows the player from `colour_hex`, never their rank.
+- Crosshair and tooltip on **mouse only**: on a phone a pointer handler here
+  would fight the sideways scroll, and touch has the rows and chips instead.
+
+**Series bonuses are not on the lines.** `v_series_bonus` carries no episode, so
+there is no honest week to attach a +3 to — the same reason `movementFor`
+carries them across rather than counting them as this week's news. The
+leaderboard total includes them and the chart says so when they are non-zero.
+It is theoretical until phase 6 puts top-three picks in.
+
+### The leaderboard, and the reorder
+
+Rows are buttons, because a row is also the chart's control. The 300ms position
+transition DESIGN §10 asks for is FLIP: after React reorders the rows, each one
+that moved is translated back to where it was and released, so CSS carries it
+home. It measures `offsetTop` and **not** `getBoundingClientRect().top` — the
+second is viewport-relative, so scrolling the page between two polls would look
+exactly like every row moving at once and the whole table would slide.
+
+### The wall
+
+A table: avatar, name, the week's points, then a column per category. Cards per
+player were built first and replaced — a table scales to sixteen players, and
+reading *down* a column ("everyone said Priya") is what people actually do with
+a prediction wall.
+
+Seven columns will not fit a phone at a size where a baker's name is readable,
+so it is sized for readability and scrolls sideways with **only the avatar
+pinned** — about 2.4rem, so most of the width is data. The disc's colour and
+initial identify the row once the name has gone. That makes it the second
+element allowed to scroll sideways where DESIGN §6 reserved that for the chart;
+§6 is the section marked as sketched until there was real data in it.
+
+**It marks wrong picks as well as right ones, unlike the scorecard on `/play`.**
+There, prose carries it and a wrong pick recedes because it costs nothing. A
+wall cell is a name in a box with no room for a sentence, so the tint would be
+carrying the meaning alone. `src/components/Mark.jsx` is the shared mark and its
+header explains the split.
+
+**The wall is empty right now and that is the system working.** No episode has a
+deadline, and `v_public_predictions` fails closed on exactly that. The panel
+says which of the two reasons applies rather than showing a blank.
+
+### What phase 5 does not cover
+
+- **Top Three board.** Deferred to phase 6, and it is not merely a cost
+  question: `top_picks` is ungranted and **no granted view exposes who is in
+  whose three** — `v_series_bonus` carries points only, `v_baker_stats` a count
+  per baker. It needs a new view as well as the `saveTopPicks` API and UI.
+- **Stats strip** — phase 6, as planned.
+- **The results grid names the winner rather than showing their face.** There
+  are no photos, and `v_episode_results_public` carries `baker_name` and not
+  `photo_url`.
+- **The recap is collapsed on every screen**, not just phones. One tap, and it
+  is the least live thing on the page.
 
 **Leagues** — later; one league is enough for now.
 
@@ -411,6 +522,20 @@ taken by another project, and a request to 5173 then hits the wrong app. Use
 `--port N --strictPort`, and never kill node processes by matching `vite` — that
 takes out the user's other work.
 
+**To look at it on a phone**, the dev server needs `--host`: by default it binds
+to `::1` only, so nothing else on the network can reach it. Then
+`http://<this machine's LAN IP>:<port>/`. Windows Firewall may prompt on the
+first connection, and a live VPN can capture the LAN route. `/api/*` works there
+too — `vite.config.js` serves it in dev.
+
+**React's compiler reads any `.current` property as a ref access** and gives up
+on memoising the component that touches one, which surfaces as a
+`preserve-manual-memoization` lint error rather than anything about refs. That
+is why `fetchLive` returns `currentEpisode` and not `current`. Similarly,
+writing to a DOM node reached through a ref that arrived as a *hook argument*
+trips `react-hooks/immutability` — the FLIP hook in `Leaderboard.jsx` owns its
+ref and hands it back for that reason.
+
 **`npm run lint` is clean and should stay that way.** React's newer rules reject
 `setState` synchronously inside effects and impure calls like `Date.now()` during
 render. Both came up in phase 2 and both had real fixes — don't reach for a
@@ -440,7 +565,16 @@ disable comment.
   Fix if needed: a `login_attempts` table keyed by IP.
 - **The chart can show at most four colours at once.** Not a style choice — a
   fifth series measures ΔE 7.1 to ordinary vision against a floor of 15.
-  DESIGN.md §6 builds the three-state line model around it.
+  DESIGN.md §6 builds the three-state line model around it, and phase 5
+  implements it: direct labels, the muted default, and the numbers table are
+  what carry a dozen players, not the hues.
+- **The prediction wall scrolls sideways**, which DESIGN §6 reserves for the
+  chart. Seven columns do not fit a phone at a size where a baker's name can be
+  read. Only the avatar is pinned. §6 is the section marked as sketched until
+  there was real data in it — worth a decision when that section is rewritten.
+- **The wall's pinned column uses `position: sticky` on table cells** with
+  collapsed borders. Current Chrome and Safari handle it; anywhere that doesn't,
+  the column simply scrolls with the rest — readable, just not pinned.
 - **The identity palette (16 colours) has not been validated.** It doesn't need
   the chart's gate because those colours always sit beside a name, but it's owed
   a pass.

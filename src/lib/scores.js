@@ -159,6 +159,18 @@ export function nameList(names) {
   return `${clean.slice(0, -1).join(', ')} and ${clean[clean.length - 1]}`
 }
 
+/**
+ * −1 reads as a penalty; +4 reads as points won. 0 is just 0.
+ *
+ * A real minus sign (U+2212), not a hyphen: it is the width of the plus above
+ * it, which is what keeps a tabular-nums column actually lining up.
+ */
+export function signed(n) {
+  if (n == null) return '—'
+  if (n > 0) return `+${n}`
+  return n < 0 ? `−${Math.abs(n)}` : '0'
+}
+
 export function ordinal(n) {
   if (n == null) return ''
   const s = ['th', 'st', 'nd', 'rd']

@@ -1,0 +1,202 @@
+import { Panel } from './Panel.jsx'
+import { Avatar } from './Avatar.jsx'
+import { Mark } from './Mark.jsx'
+import { signed, verdictFor } from '../lib/scores.js'
+import { usePopKey } from '../lib/usePopKey.js'
+import { useCountdown } from '../lib/useCountdown.js'
+
+/**
+ * Everyone's picks, ticking as the results land. The bit people shout at.
+ *
+ * IT IS SUPPOSED TO BE EMPTY BEFORE THE DEADLINE, and it will be empty for
+ * every episode in the database today, because none of them has a deadline yet.
+ * That is the system working. The rows come from v_public_predictions, whose
+ * WHERE clause is the whole of "nobody sees your picks early" and which fails
+ * closed on a null deadline — an episode nobody can be late for is one whose
+ * picks stay private. Nothing here reads `predictions` or `entries`, and
+ * nothing here may.
+ *
+ * A table: players down, the week's points beside the name, then the
+ * categories across. It scales where cards don't — sixteen players is sixteen
+ * rows you can scan in one look, and reading down a column ("everyone said
+ * Priya") is the thing people actually do with a prediction wall.
+ *
+ * The cost is width. Seven columns will not fit a phone at a size where a
+ * baker's name is readable, so the table is sized for readability and scrolls
+ * sideways, with the player column pinned — the pattern that keeps a row
+ * identifiable once its name has scrolled off. That makes it the second element
+ * allowed to scroll sideways, where DESIGN §6 reserved that for the chart; §6
+ * is marked as sketched and expected to change once there was real data in it,
+ * and this is that.
+ *
+ * The cells mark wrong picks as well as right ones, which the scorecard on
+ * /play deliberately doesn't — see Mark.jsx. There, prose says what happened
+ * and a wrong pick recedes because it costs nothing. Here a cell is a name in a
+ * box with no room for a sentence, so the tint would be carrying the meaning on
+ * its own, and colour never does that (DESIGN §5).
+ */
+export function PredictionWall({
+  categories, predictions, standings, bakerNames, results, scores, episode, meId,
+}) {
+  const countdown = useCountdown(episode?.deadline_at)
+
+  if (!episode) return null
+
+  if (!episode.predictions_public) {
+    return (
+      <Panel head="The wall">
+        <h2>Everyone’s picks are sealed</h2>
+        <p className="muted">
+          {episode.deadline_at
+            ? `They all appear here the moment the deadline passes — ${countdown.label.toLowerCase()}.`
+            : `Episode ${episode.number} has no deadline yet, so nobody can be late for it and nobody’s picks are public. They appear here as soon as the schedule is set.`}
+        </p>
+        <p className="small muted">
+          Nobody can see them before then — not other players, not the GM, and
+          not by opening the developer tools. The rule lives in the database.
+        </p>
+      </Panel>
+    )
+  }
+
+  return (
+    <Panel head="The wall">
+      <div className="scroll-x wall-scroll">
+        <table className="wall-table">
+          <thead>
+            {/* Only the avatar pins — about 2.4rem rather than the whole name
+                column, so more of a phone's width is actual data. The name
+                scrolls away with everything else; the disc's colour and initial
+                are what keep the row identifiable, and the full name is one
+                swipe back. */}
+            <tr>
+              <th scope="col" className="wall-face"></th>
+              <th scope="col" className="wall-name">Player</th>
+              <th scope="col" className="wall-score">Week</th>
+              {categories.map((c) => (
+                <th key={c.key} scope="col">
+                  <span aria-hidden="true">{shortLabel(c.label)}</span>
+                  <span className="wall-worth" aria-hidden="true">+{c.points}</span>
+                  <span className="sr-only">{c.label}, {c.points} points</span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {standings.map((player) => (
+              <Row
+                key={player.player_id}
+                player={player}
+                categories={categories}
+                picks={predictions.filter((p) => p.player_id === player.player_id)}
+                bakerNames={bakerNames}
+                results={results}
+                week={scores.find((s) => s.player_id === player.player_id && s.episode_id === episode.id) ?? null}
+                isMe={player.player_id === meId}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Panel>
+  )
+}
+
+function Row({ player, categories, picks, bakerNames, results, week, isMe }) {
+  const pops = usePopKey(week?.points ?? null)
+  // Lateness and the GM's disallow switch belong to the entry, so every one of
+  // a player's rows carries the same answer.
+  const entry = picks[0] ?? null
+  const byCategory = Object.fromEntries(picks.map((p) => [p.category, p.baker_id]))
+
+  return (
+    <tr className={`${entry?.is_disallowed ? 'disallowed ' : ''}${isMe ? 'me' : ''}`}>
+      {/* The one pinned cell. Decorative rather than the row's header: the name
+          beside it is what a screen reader should announce for each cell, and
+          the avatar is already aria-hidden. */}
+      <td className="wall-face">
+        <Avatar name={player.display_name} colour={player.colour_hex} size={26} />
+      </td>
+
+      <th scope="row" className="wall-name">
+        <span className="wall-nm">{player.display_name}</span>
+        {/* "You" goes under the name rather than beside it: a tag alongside
+            would either push the name out or be eaten by its ellipsis. The row
+            is tinted too, but the word is what carries it — colour never does
+            that alone. */}
+        <span className="wall-flags">
+          {isMe && <span className="flag you">You</span>}
+          {entry?.lateness === 'late' && <span className="flag">Late</span>}
+          {entry?.lateness === 'very_late' && <span className="flag">Very late</span>}
+          {entry?.is_disallowed && <span className="flag">Disallowed</span>}
+        </span>
+      </th>
+
+      <td className="wall-score">
+        <span key={pops} className={`score-number${pops > 0 ? ' popped' : ''}`}>
+          {week ? signed(week.points) : '—'}
+        </span>
+      </td>
+
+      {entry ? (
+        categories.map((c) => (
+          <Cell
+            key={c.key}
+            category={c}
+            pick={byCategory[c.key] ?? null}
+            bakerNames={bakerNames}
+            results={results}
+            // Which pick cost a point, straight from v_episode_scores. Never
+            // worked out here: that would be a second implementation of a
+            // scoring rule, free to drift from the one that pays out.
+            penalty={(week?.penalties ?? []).find((p) => p.category === c.key) ?? null}
+          />
+        ))
+      ) : (
+        <td className="wall-noentry" colSpan={categories.length}>No entry this week</td>
+      )}
+    </tr>
+  )
+}
+
+/**
+ * One pick. The states are the scorecard's states, from the same function:
+ *
+ *   right    tick, mint     nobody    hatched — the category paid no one
+ *   wrong    cross, grey    pending   blank behind a stitch border
+ *   nopick   they left it blank, but the category is settled, which is not the
+ *            same thing as "still to come"
+ *
+ * Two lines rather than one, because a category column is about 44px wide on a
+ * phone: the mark gets the top line and the whole width goes to the name.
+ */
+function Cell({ category, pick, bakerNames, results, penalty }) {
+  const { state } = verdictFor(category.key, pick, results)
+  const name = pick ? bakerNames[pick] ?? 'gone' : null
+
+  return (
+    <td className={`wall-cell ${state}${penalty ? ' penalised' : ''}`}>
+      <span className={`wall-pick${state === 'nobody' ? ' hatched' : ''}`}>
+        <span className="wall-mark">
+          {penalty && <span className="wall-cost">{signed(penalty.points)}</span>}
+          {!penalty && state === 'right' && <Mark glyph="✓" label="right" />}
+          {!penalty && state === 'wrong' && <Mark glyph="✗" label="wrong" />}
+        </span>
+        <span className="wall-who-picked">{name ?? <span className="muted">—</span>}</span>
+      </span>
+    </td>
+  )
+}
+
+/**
+ * "Leaving Baker" → "Leaving". The column is 44px wide and the full label is
+ * read out by the sr-only span beside it.
+ *
+ * Derived rather than mapped, because categories are configuration and not
+ * code — a sixth one is a row in the table, and a lookup here would be one more
+ * place that has to hear about it (TECH_PLAN §3).
+ */
+function shortLabel(label) {
+  const first = label.split(' ')[0]
+  return first.length > 9 ? `${first.slice(0, 8)}…` : first
+}

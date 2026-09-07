@@ -1,6 +1,7 @@
-import { useState } from 'react'
 import { Panel } from './Panel.jsx'
-import { nameList, positionLabel, verdictFor } from '../lib/scores.js'
+import { Mark } from './Mark.jsx'
+import { nameList, positionLabel, signed, verdictFor } from '../lib/scores.js'
+import { usePopKey } from '../lib/usePopKey.js'
 
 /**
  * How a week went: every pick ticked or crossed, what the answer actually was,
@@ -70,16 +71,12 @@ export function Scorecard({ categories, picks, bakerNames, results, week, positi
  * The week's points. A score change is the one moment DESIGN §10 says is worth
  * animating — 400ms with a slight overshoot — so the pop fires when the number
  * *changes* and not when the panel first opens, where it would be a flourish
- * for something nobody watched happen. Remounting on a key is what restarts the
- * animation; `prefers-reduced-motion` already kills it in styles.css.
+ * for something nobody watched happen. usePopKey is what restarts the
+ * animation, and the dashboard's leaderboard totals use the same hook;
+ * `prefers-reduced-motion` already kills it in styles.css.
  */
 function Big({ points }) {
-  const [seen, setSeen] = useState(points)
-  const [pops, setPops] = useState(0)
-  if (seen !== points) {
-    setSeen(points)
-    setPops((n) => n + 1)
-  }
+  const pops = usePopKey(points)
 
   return (
     <div className="score-big">
@@ -201,22 +198,6 @@ function Detail({ state, mine, answer, winners, penalty }) {
   }
 
   return text ? <span className="verdict-detail">{text}</span> : null
-}
-
-function Mark({ glyph }) {
-  return <span className="verdict-mark" aria-hidden="true">{glyph}</span>
-}
-
-/**
- * −1 reads as a penalty; +4 reads as points won. 0 is just 0.
- *
- * A real minus sign (U+2212), not a hyphen: it is the width of the plus above
- * it, which is what keeps a tabular-nums column actually lining up.
- */
-function signed(n) {
-  if (n == null) return '—'
-  if (n > 0) return `+${n}`
-  return n < 0 ? `−${Math.abs(n)}` : '0'
 }
 
 function sentenceCase(s) {

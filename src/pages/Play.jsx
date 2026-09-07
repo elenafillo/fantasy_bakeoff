@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Panel } from '../components/Panel.jsx'
 import { Avatar } from '../components/Avatar.jsx'
 import { Scorecard } from '../components/Scorecard.jsx'
-import { storedCode, rememberCode, forgetCode, playerPost } from '../lib/playerApi.js'
+import { storedCode, rememberCode, rememberWho, forgetCode, playerPost } from '../lib/playerApi.js'
 import { useCountdown } from '../lib/useCountdown.js'
 import { useRefreshOnFocus } from '../lib/useRefreshOnFocus.js'
 import { fetchScoreboard, positionLabel } from '../lib/scores.js'
@@ -29,7 +29,16 @@ export default function Play() {
     // the two wins and shows the wrong player's panel.
     let cancelled = false
     playerPost('state', code)
-      .then((next) => { if (!cancelled) { setState(next); setError(null) } })
+      .then((next) => {
+        if (cancelled) return
+        // Two public facts, cached so the dashboard can open on this player's
+        // league with their row marked without an /api/player call of its own
+        // (playerApi.js). Written on every state call, so it follows the GM
+        // moving somebody between leagues.
+        rememberWho({ playerId: next.player.id, leagueSlug: next.league.slug })
+        setState(next)
+        setError(null)
+      })
       .catch((err) => { if (!cancelled) { setError(err.message); setState(null) } })
     return () => { cancelled = true }
   }, [code])

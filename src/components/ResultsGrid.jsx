@@ -1,0 +1,69 @@
+import { Panel } from './Panel.jsx'
+import { nameList, verdictFor } from '../lib/scores.js'
+
+/**
+ * What happened this week, filling in category by category as the GM enters it.
+ *
+ * THREE STATES, and keeping the first two apart is the point of the component
+ * (RULES §3, DESIGN §7):
+ *
+ *   no row at all              not decided yet   plainly blank, stitch border
+ *   one voided row, no baker   Nobody won it     hatched, struck through
+ *   a row with a baker         a winner          named
+ *
+ * Two winners in a category is normal — two eliminations, three bingo hits — so
+ * this names all of them. Naming any one of them scored, once.
+ *
+ * verdictFor with no pick is reused rather than reimplemented: with pickId null
+ * it answers the question this grid asks — was this decided, and by whom — and
+ * it is the function the scorecard and the wall already agree with.
+ *
+ * TECH_PLAN §5 wanted the winning baker's face here. There are no photos yet,
+ * and v_episode_results_public carries the name and not photo_url, so this
+ * names them. Faces are a column and a phase away.
+ */
+export function ResultsGrid({ categories, results, episode }) {
+  if (!episode) return null
+
+  const live = episode.status === 'live'
+
+  return (
+    <Panel head={`Episode ${episode.number}${episode.theme ? ` · ${episode.theme}` : ''}`}>
+      <div className="resmeta">
+        {live && (
+          <span className="pill bad live-pulse">
+            <span className="dot" />
+            Live now
+          </span>
+        )}
+        {episode.status === 'complete' && (
+          <span className="pill"><span className="dot" />Finished</span>
+        )}
+        {episode.bingo_prompt && (
+          <p className="bingo">
+            <span className="eyebrow">This week’s bingo</span>
+            {episode.bingo_prompt}
+          </p>
+        )}
+      </div>
+
+      <div className="resgrid">
+        {categories.map((c) => {
+          const { state, winners } = verdictFor(c.key, null, results)
+          return (
+            <div key={c.key} className={`rescell ${state}`}>
+              <span className="picker-label">
+                {c.label} <span className="muted">+{c.points}</span>
+              </span>
+              <span className={`rescell-body${state === 'nobody' ? ' hatched' : ''}`}>
+                {winners.length > 0 && nameList(winners.map((w) => w.baker_name))}
+                {state === 'nobody' && <s>Nobody</s>}
+                {state === 'pending' && <span className="muted">Still to come</span>}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </Panel>
+  )
+}

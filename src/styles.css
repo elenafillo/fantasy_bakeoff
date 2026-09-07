@@ -504,6 +504,358 @@ a { color: inherit; }
 
 textarea.input { resize: vertical; line-height: 1.4; }
 
+/* ---- The dashboard ----
+   The landing page, and the screen people are actually looking at during an
+   episode. Mobile first throughout: a phone on a sofa is the real device, and a
+   big screen gets more room rather than a different design (DESIGN §1). */
+
+.dash-head { display: flex; align-items: flex-start; gap: .75rem; }
+.dash-head h1 { margin-bottom: .1rem; }
+.dash-head .pill { margin-left: auto; flex: none; }
+.dash-note { margin: .7rem 0 0; }
+
+/* A word beside a name: YOU, and nothing else so far. */
+.tag {
+  margin-left: .4rem;
+  font-size: .65rem; font-weight: 900;
+  letter-spacing: .08em; text-transform: uppercase;
+  background: var(--butter); color: var(--ink);
+  border-radius: 999px;
+  padding: .1rem .4rem;
+  vertical-align: .08em;
+}
+
+/* Read out, never drawn. The tick on a wall cell has no prose beside it to
+   carry its meaning, unlike the scorecard's. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+/* ---- Leaderboard ----
+   Each row is the chart's control as well as a row: tapping it cycles that
+   player's line. Hence a button, and hence the 44px-plus target. */
+
+.lb { display: grid; }
+
+.lb-row {
+  display: grid;
+  grid-template-columns: 1.4rem auto 1fr auto;
+  align-items: center;
+  gap: .6rem;
+  width: 100%;
+  padding: .55rem .2rem;
+  background: none; border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font); font-size: 1rem;
+  color: inherit; text-align: left;
+  cursor: pointer;
+  /* The reorder: 300ms of position, never a fade (DESIGN §10). Leaderboard.jsx
+     translates a moved row back to where it was and releases it, and this is
+     what carries it home. */
+  transition: transform .3s ease;
+}
+.lb-row + .lb-row { border-top: 2px solid var(--line); }
+.lb-row.me { background: var(--pink-bg); }
+
+.lb-pos {
+  font-weight: 900; font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+  text-align: right;
+  position: relative;
+}
+/* Ties share a position and the sequence skips — 1, 1, 3 — so joint places are
+   marked. The "joint 2nd" under the name is what actually says it; this is the
+   scanning shorthand. */
+.lb-joint { position: absolute; right: 100%; margin-right: .05rem; }
+
+.lb-name { display: grid; min-width: 0; }
+/* The tag sits OUTSIDE the truncating span: inside it, a long name clips
+   through the tag and leaves a scrap of colour carrying no word. */
+.lb-who { display: flex; align-items: center; gap: .1rem; min-width: 0; font-weight: 800; }
+.lb-nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-sub { display: flex; align-items: center; gap: .3rem; flex-wrap: wrap; }
+.lb-sub .up { color: #14795c; font-weight: 800; }
+.lb-sub .down { color: var(--live); font-weight: 800; }
+
+.lb-pts { text-align: right; }
+.lb-total { display: block; font-size: 1.5rem; line-height: 1.1; }
+.lb-week { display: block; font-variant-numeric: tabular-nums; }
+
+/* The chart-line swatch — which line is theirs, and how loudly it is drawn. */
+.chip-dash {
+  display: inline-block;
+  width: .85rem; height: .2rem;
+  border-radius: 999px;
+  flex: none;
+}
+.lb-row.line-muted .chip-dash { opacity: .4; }
+.lb-row.line-hidden .chip-dash { opacity: .15; }
+
+/* ---- Points chart ----
+   The one element allowed to scroll sideways on a phone (DESIGN §6). */
+
+.chart-scroll { overflow-x: auto; margin: 0 -.25rem; }
+.chart-inner { position: relative; }
+
+.chart-grid { stroke: var(--line); stroke-width: 1; }
+.chart-zero { stroke: var(--ink-soft); stroke-width: 1; }
+.chart-cross { stroke: var(--ink-soft); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart-axis {
+  fill: var(--ink-soft);
+  font-size: .68rem; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+/* Ink, not the player's hue: aqua is 2.82:1 on white, which carries a 2.5px
+   line and fails a 12px word. The dash beside it carries the colour. */
+.chart-label { fill: var(--ink); font-size: .75rem; font-weight: 800; }
+
+.chart-tip {
+  position: absolute; top: .4rem;
+  background: var(--card);
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: .45rem .6rem;
+  font-size: .8rem;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 2;
+}
+.chart-tip strong { display: block; margin-bottom: .2rem; }
+.chart-tip-row { display: flex; align-items: center; gap: .35rem; }
+.chart-tip-row b { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+.chart-legend { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .8rem; }
+.chip {
+  display: inline-flex; align-items: center; gap: .4rem;
+  font-family: var(--font); font-size: .82rem; font-weight: 800;
+  color: var(--ink);
+  background: var(--pink-bg);
+  border: 2px solid transparent; border-radius: 999px;
+  padding: .4rem .7rem;
+  cursor: pointer;
+}
+.chip.full { background: var(--card); border-color: var(--ink); }
+.chip.muted .chip-dash { opacity: .4; }
+.chip.hidden { color: var(--ink-soft); }
+.chip.hidden .chip-dash { opacity: .15; }
+.chip.hidden .chip-name { text-decoration: line-through; }
+
+.chart-note { margin: .6rem 0 0; }
+.chart-table { margin-top: .8rem; }
+.chart-table summary {
+  font-weight: 800; font-size: .85rem;
+  color: var(--btn);
+  cursor: pointer;
+  padding: .4rem 0;
+}
+.scroll-x { overflow-x: auto; }
+.numbers {
+  border-collapse: collapse;
+  font-size: .85rem;
+  font-variant-numeric: tabular-nums;
+  margin: .4rem 0;
+}
+.numbers th, .numbers td {
+  padding: .3rem .55rem;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+}
+.numbers thead th { color: var(--ink-soft); font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; }
+.numbers tbody th { text-align: left; font-weight: 800; }
+.numbers .strong { font-weight: 900; }
+
+/* ---- This week's results ----
+   Three states, and the first two must not look alike: blank is "not decided
+   yet", hatched is "Nobody won it" (RULES §3, DESIGN §7). */
+
+.resmeta { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: .9rem; }
+.resmeta .bingo { flex: 1 1 100%; margin: 0; }
+
+/* The only thing that pulses, ever (DESIGN §10). */
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .55; }
+}
+.pill.live-pulse .dot { animation: live-pulse 2s ease-in-out infinite; }
+
+.resgrid {
+  display: grid;
+  gap: .7rem;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+}
+.rescell { display: grid; gap: .25rem; }
+.rescell-body {
+  background-color: var(--pink-bg);
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: .5rem .7rem;
+  font-weight: 800;
+  min-height: 2.6rem;
+  display: flex; align-items: center;
+}
+/* Settled, and paid nobody. */
+.rescell.nobody .rescell-body { background-color: var(--card); border-color: var(--line); }
+/* Still to come: plainly blank behind the stitch border DESIGN §7 keeps for
+   provisional things. */
+.rescell.pending .rescell-body {
+  background-color: var(--card);
+  border: 2px dashed var(--line);
+  font-weight: 700;
+}
+
+/* ---- The prediction wall ----
+   Players down, categories across. A table scales where cards don't — sixteen
+   players is sixteen rows, and reading DOWN a column ("everyone said Priya") is
+   what people actually do with a prediction wall.
+
+   Seven columns is more than a phone has room for, so the player column is
+   sticky and the rest scrolls under it. That makes this the second element
+   allowed to scroll sideways after the chart, which DESIGN §6 reserved — and
+   §6 is the section marked as sketched until there was real data in it. */
+
+.wall-scroll { margin: 0 -.5rem; }
+/* Wide enough that a baker's name is readable, and it scrolls sideways on a
+   phone rather than squeezing the columns until nothing is. Collapsed borders,
+   not border-spacing: the gaps between the pills come from cell padding, which
+   is what makes the two sticky columns' left offsets predictable. */
+.wall-table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%; min-width: 40rem;
+}
+.wall-table th, .wall-table td { padding: .15rem; }
+
+.wall-table thead th {
+  font-size: .62rem; font-weight: 800;
+  letter-spacing: .03em; text-transform: uppercase;
+  color: var(--ink-soft);
+  text-align: center;
+  vertical-align: bottom;
+  padding-bottom: .2rem;
+  line-height: 1.2;
+}
+.wall-worth { display: block; font-weight: 700; opacity: .75; }
+
+/* The avatar is the only pinned column — about 2.4rem, rather than the whole
+   name, so that most of a phone's width goes to the data. Its colour and
+   initial are what identify a row once the name has scrolled away, and the name
+   is one swipe back. It carries its own background because the cells pass
+   underneath it, and a hairline on the right so it reads as pinned rather than
+   as a column that happens to be first. */
+.wall-face {
+  position: sticky; left: 0; z-index: 2;
+  background: var(--card);
+  width: 2.4rem;
+  box-shadow: 1px 0 0 var(--line);
+  text-align: center;
+}
+.wall-name { width: 6.5rem; text-align: left; }
+.wall-score { width: 3rem; text-align: right; }
+.wall-nm {
+  display: block;
+  font-size: .82rem; font-weight: 800;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wall-table tbody tr.me .wall-face,
+.wall-table tbody tr.me .wall-name { background: var(--pink-bg); }
+.wall-table tbody tr.me .wall-nm { color: var(--btn); }
+
+/* LATE / VERY LATE / Disallowed. A pill would not fit in a 6rem column, so the
+   flag is the word alone in the reserved red — still a word, never a colour on
+   its own. */
+.wall-flags { display: flex; flex-wrap: wrap; gap: .2rem; margin-top: .1rem; }
+.flag {
+  font-size: .58rem; font-weight: 900;
+  letter-spacing: .05em; text-transform: uppercase;
+  color: var(--live);
+  background: #fdeaee;
+  border-radius: 999px;
+  padding: .05rem .35rem;
+}
+/* Not red: "you" is not a warning, and --live means the episode is airing, an
+   entry is late, or a point was lost. */
+.flag.you { color: var(--ink); background: var(--butter); }
+
+/* Two lines: the mark, then the name. A category column is about 44px wide on
+   a phone, and stacking gives the whole of it to the baker's name rather than
+   making the two fight. */
+.wall-pick {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background-color: var(--pink-bg);
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: .3rem .2rem;
+  min-height: 2.7rem;
+  font-size: .78rem; font-weight: 800;
+  line-height: 1.15;
+  text-align: center;
+}
+.wall-mark { display: block; min-height: .95rem; font-size: .8rem; }
+/* Wraps rather than truncating. An ellipsis loses the end of the name, which is
+   exactly the part that tells one baker from another — the placeholder cast is
+   "Baker One … Baker Twelve", and every cell would read "Baker …". */
+.wall-who-picked {
+  display: block; width: 100%;
+  overflow-wrap: anywhere;
+  hyphens: none;
+}
+
+/* Mint always comes WITH the tick, never instead of it (DESIGN §5). */
+.wall-cell.right .wall-pick { background-color: #e6f6f0; color: #14795c; }
+/* And a wrong pick here gets the cross, unlike the scorecard's — a cell has no
+   prose to carry it, so the grey would be on its own. See Mark.jsx. */
+.wall-cell.wrong .wall-pick,
+.wall-cell.nopick .wall-pick {
+  background-color: var(--card); border-color: var(--line); color: var(--ink-soft);
+}
+/* Settled, and paid nobody. */
+.wall-cell.nobody .wall-pick { background-color: var(--card); border-color: var(--line); }
+/* Still to come: plainly blank behind a stitch border. Blank and hatched must
+   not look alike (RULES §3, DESIGN §7). */
+.wall-cell.pending .wall-pick {
+  background-color: var(--card);
+  border: 2px dashed var(--line);
+  color: var(--ink-soft);
+}
+/* A penalty is a layer on top, not a fifth state. Red, and it says what it
+   cost — losing a point must not look like missing one. This is the widening of
+   --live that phase 4 decided on. */
+.wall-cell.penalised .wall-pick { background-color: #fdeaee; border-color: #fdeaee; color: var(--live); }
+.wall-cost { font-weight: 900; font-variant-numeric: tabular-nums; }
+
+.wall-score .score-number { font-size: 1.05rem; }
+.wall-noentry {
+  font-size: .78rem; font-weight: 700;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+/* The GM's switch, applied to the whole entry: struck through, and the picks
+   hatched over — the same texture the results grid uses for a category that
+   paid nobody, and for the same reason. It reads as struck out without colour. */
+.wall-table tbody tr.disallowed .wall-nm { color: var(--ink-soft); text-decoration: line-through; }
+.wall-table tbody tr.disallowed .wall-pick { opacity: .55; }
+
+/* ---- The recap ---- */
+
+.recap > summary {
+  font-weight: 800; font-size: .9rem;
+  color: var(--btn);
+  cursor: pointer;
+  padding: .3rem 0;
+}
+.recap-week { margin-top: 1rem; }
+.recap-week h3 { font-size: 1rem; margin: 0 0 .35rem; }
+.recap-list { margin: 0; display: grid; gap: .2rem; }
+.recap-row { display: flex; gap: .6rem; justify-content: space-between; align-items: baseline; }
+.recap-row dt { font-size: .82rem; font-weight: 800; color: var(--ink-soft); }
+.recap-row dd { margin: 0; font-weight: 800; text-align: right; }
+.recap-row dd.hatched { padding: 0 .3rem; border-radius: 4px; }
+
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
@@ -515,4 +867,11 @@ textarea.input { resize: vertical; line-height: 1.4; }
   h1 { font-size: 2.2rem; }
   .brand { font-size: 1.3rem; }
   .nav a { font-size: .8rem; padding: .35rem .85rem; }
+
+  /* More room, not a different design (DESIGN §1): the same vertical stack,
+     with the two grids allowed to spread out. */
+  .lb-row { padding: .7rem .4rem; }
+  .lb-total { font-size: 1.7rem; }
+  .wall { grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr)); gap: 1.4rem; }
+  .wall-card + .wall-card { border-top: none; padding-top: 0; }
 }

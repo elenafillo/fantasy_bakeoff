@@ -17,14 +17,17 @@ const NAV = [
 ]
 
 function route(path) {
-  if (path === '/') return <Dashboard slug={null} />
+  // The dashboard is keyed on the league so that moving between two of them
+  // remounts it rather than showing one league's table under another's name
+  // while the new one loads.
+  if (path === '/') return <Dashboard key="default" slug={null} />
   if (path === '/play') return <Play />
   if (path === '/bakers') return <Bakers />
   if (path === '/rules') return <Rules />
   if (path === '/gm') return <Gm />
 
   const league = path.match(/^\/league\/([a-z0-9-]+)\/?$/i)
-  if (league) return <Dashboard slug={league[1]} />
+  if (league) return <Dashboard key={league[1]} slug={league[1]} />
 
   return (
     <Panel>
