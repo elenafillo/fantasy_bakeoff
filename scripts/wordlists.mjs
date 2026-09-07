@@ -32,18 +32,11 @@ export const BAKES = [
   'marzipan', 'brittle', 'wafer', 'churro', 'blondie', 'cannoli', 'tiramisu', 'clafoutis',
 ]
 
-/**
- * Absorb casing, spaces, hyphens and stray punctuation so "Velvet Crumb",
- * "velvet-crumb" and "velvetcrumb" are the same code. It does NOT absorb
- * misspellings — if someone is stuck at the door, look their code up in the GM
- * panel rather than trying to guess what they typed.
- *
- * Used on both sides: to build code_norm here, and to match it in api/player.js.
- * The two must stay identical, which is why it lives in one file.
- */
-export function normaliseCode(raw) {
-  return String(raw ?? '').toLowerCase().replace(/[^a-z]/g, '')
-}
+// Re-exported from the server's copy rather than duplicated: the string this
+// script writes into code_norm and the string api/player.js compares at the
+// door must be produced by the same function, or a code that is demonstrably
+// someone's will one day stop working.
+export { normaliseCode } from '../api/_codes.js'
 
 /**
  * Provisional identity colours (DESIGN.md §5). These only ever appear beside a

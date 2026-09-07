@@ -198,6 +198,73 @@ a { color: inherit; }
 .pill.bad { background: #fdeaee; color: var(--live); }
 .pill.bad .dot { background: var(--live); }
 
+/* ---- Forms ---- */
+
+.input {
+  font-family: var(--font);
+  font-size: 1rem; font-weight: 600;
+  color: var(--ink);
+  background: var(--card);
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: .6rem .8rem;
+  width: 100%;
+}
+.input:focus { outline: none; border-color: var(--accent); }
+.input:disabled { background: var(--pink-bg); color: var(--ink-soft); }
+
+.login { display: flex; gap: .6rem; flex-wrap: wrap; margin: .9rem 0 0; }
+.login .input { flex: 1 1 12rem; }
+
+.pickers { display: grid; gap: .8rem; margin: 1.1rem 0; }
+.picker { display: block; }
+.picker-label {
+  display: block;
+  font-weight: 800; font-size: .82rem;
+  letter-spacing: .04em; text-transform: uppercase;
+  margin-bottom: .3rem;
+}
+
+.actions { display: flex; gap: .6rem; flex-wrap: wrap; margin-top: 1rem; }
+
+.btn:disabled { background: var(--line); color: var(--ink-soft); box-shadow: none; cursor: default; }
+.btn-quiet {
+  background: var(--card); color: var(--btn);
+  box-shadow: 0 0 0 2px var(--line) inset;
+}
+.btn-quiet:disabled { box-shadow: 0 0 0 2px var(--line) inset; background: var(--card); }
+
+.link-btn {
+  margin-left: auto;
+  background: none; border: none; padding: .2rem;
+  font-family: var(--font); font-size: .8rem; font-weight: 700;
+  color: var(--ink-soft); text-decoration: underline; cursor: pointer;
+}
+
+/* ---- Player panel bits ---- */
+
+.who { display: flex; align-items: center; gap: .75rem; }
+
+.deadline { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: .9rem; }
+
+.bingo {
+  background: var(--pink-bg);
+  border-radius: var(--radius-sm);
+  padding: .8rem .9rem;
+  font-weight: 700;
+}
+.bingo .eyebrow { display: block; margin-bottom: .15rem; }
+
+/* Notices carry a word, never a colour alone — see DESIGN.md §5. */
+.notice {
+  border-radius: var(--radius-sm);
+  padding: .7rem .9rem;
+  font-size: .9rem; font-weight: 600;
+  background: var(--butter);
+}
+.notice.bad { background: #fdeaee; color: var(--live); }
+.notice.ok  { background: #e6f6f0; color: #14795c; }
+
 /* Voided categories and disallowed entries. Functional, not decorative: it
    reads as struck out without relying on colour, including in print. */
 .hatched {

@@ -55,6 +55,50 @@ export async function rest(path, query = '') {
   return data
 }
 
+// Insert, or upsert when `onConflict` names the unique constraint to merge on
+// (PostgREST defaults to the primary key otherwise, which is never what we
+// want here — the constraints that matter are entries(player_id, episode_id)
+// and predictions(entry_id, category)).
+//
+// Only the columns present in `body` are written, so an upsert cannot silently
+// clear a field it does not mention — is_disallowed and gm_unlocked_at survive
+// a player re-saving their picks.
+export async function restInsert(path, body, { onConflict = null } = {}) {
+  const headers = serviceHeaders()
+  if (onConflict) headers.Prefer = 'return=representation,resolution=merge-duplicates'
+  const url = `${SUPABASE_URL}/rest/v1/${path}${onConflict ? `?on_conflict=${onConflict}` : ''}`
+  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(`PostgREST insert ${path} → ${res.status}: ${data?.message || JSON.stringify(data)}`)
+  }
+  return data
+}
+
+export async function restPatch(path, query, body) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}?${query}`, {
+    method: 'PATCH',
+    headers: serviceHeaders(),
+    body: JSON.stringify(body),
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(`PostgREST patch ${path} → ${res.status}: ${data?.message || JSON.stringify(data)}`)
+  }
+  return data
+}
+
+export async function restDelete(path, query) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}?${query}`, {
+    method: 'DELETE',
+    headers: serviceHeaders(),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(`PostgREST delete ${path} → ${res.status}: ${data?.message || JSON.stringify(data)}`)
+  }
+}
+
 // Call a Postgres function (RPC). For anything where a read-check-write must
 // happen inside one transaction.
 export async function rpc(fn, args) {

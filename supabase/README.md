@@ -54,9 +54,28 @@ across a room.
 **The file is append-only.** Each `--append` run parses the earlier blocks to
 avoid reissuing a code, a word or a colour — deleting a block breaks that.
 
+## Trying it before the cast is announced
+
+`/play` needs bakers to pick from. [placeholder_bakers.sql](placeholder_bakers.sql)
+adds twelve stand-ins so the panel works end to end. Rename them in the GM panel
+when the real cast lands — that keeps their ids, so any test picks survive — or
+delete them, which cascades to predictions.
+
+## A known limitation
+
+There is no rate limiting on `/api/player`. The wordlists are public and there
+are ~1,600 combinations, so someone determined could enumerate codes and submit
+as another player. A failed login sleeps 400ms, which slows a script rather than
+stopping one.
+
+For a league of friends this is the right trade — codes are cheap to reissue and
+predictions become public at the deadline anyway. If it ever matters, the fix is
+a small `login_attempts` table keyed by IP.
+
 ## Still to seed
 
-- **Bakers** — the cast isn't announced. GM panel → Bakers, or an insert.
+- **Bakers** — the cast isn't announced. GM panel → Bakers, an insert, or the
+  placeholders above.
 - **Air dates** — episodes are seeded with numbers only. Setting `air_date`
   fills `deadline_at` in automatically at 18:00 Europe/London, British Summer
   Time handled. Until then the deadline is NULL and that episode's predictions
