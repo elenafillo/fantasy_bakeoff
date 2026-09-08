@@ -54,12 +54,20 @@ across a room.
 **The file is append-only.** Each `--append` run parses the earlier blocks to
 avoid reissuing a code, a word or a colour — deleting a block breaks that.
 
-## Trying it before the cast is announced
+## The cast
 
-`/play` needs bakers to pick from. [placeholder_bakers.sql](placeholder_bakers.sql)
-adds twelve stand-ins so the panel works end to end. Rename them in the GM panel
-when the real cast lands — that keeps their ids, so any test picks survive — or
-delete them, which cascades to predictions.
+[placeholder_bakers.sql](placeholder_bakers.sql) adds twelve stand-ins so
+`/play` works end to end before the cast is announced.
+
+[cast_2026.sql](cast_2026.sql) then renames those twelve to the real 2026 cast
+and gives each a bio line and a photo. It **updates in place**, so the ids stay
+put and any picks already made against a placeholder survive. Keyed on
+`sort_order` rather than on the placeholder names, so it is idempotent — re-run
+it to fix a bio or swap a photo URL.
+
+Neither file touches a view, a grant or a policy, so there is nothing to re-paste
+afterwards and `smoke_test.sql` is unaffected. Renaming by hand in the GM panel
+does the same job, one baker at a time.
 
 ## A known limitation
 
@@ -74,8 +82,8 @@ a small `login_attempts` table keyed by IP.
 
 ## Still to seed
 
-- **Bakers** — the cast isn't announced. GM panel → Bakers, an insert, or the
-  placeholders above.
+- **Bakers** — announced. Paste [cast_2026.sql](cast_2026.sql); until then the
+  twelve placeholders are still in there under their stand-in names.
 - **Air dates** — episodes are seeded with numbers only. Setting `air_date`
   fills `deadline_at` in automatically at 18:00 Europe/London, British Summer
   Time handled. Until then the deadline is NULL and that episode's predictions

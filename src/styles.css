@@ -856,6 +856,66 @@ textarea.input { resize: vertical; line-height: 1.4; }
 .recap-row dd { margin: 0; font-weight: 800; text-align: right; }
 .recap-row dd.hatched { padding: 0 .3rem; border-radius: 4px; }
 
+/* ---- The cast grid (/bakers) ---- */
+
+.cast-count { margin: .1rem 0 0; }
+.cast { list-style: none; margin: 1rem 0 0; padding: 0; display: grid; gap: .9rem; }
+
+.cast-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: .85rem;
+  /* Centred, not top-aligned: most cards carry a name and one line against a
+     photo half again as tall, and aligning to the top hangs all that slack
+     underneath the text. Centring splits it, and the cards that DO have chips
+     and a stats line are tall enough that it makes no difference to them. */
+  align-items: center;
+}
+.cast-card + .cast-card { border-top: 2px solid var(--line); padding-top: .9rem; }
+
+/* Greyed and sunk to the bottom, but still legible — someone who went home in
+   week two is exactly who people forget, which is what this page is for. */
+.cast-card.gone { opacity: .62; }
+.cast-card.gone .cast-face { filter: grayscale(1); }
+
+.cast-face {
+  width: 6.25rem; height: 6.25rem;
+  border-radius: 50%;
+  object-fit: cover;
+  /* The press shots are waist-up, so a centred crop puts the middle of an apron
+     in the circle and the face somewhere near the top edge. Biased upward to
+     frame the head — which is the entire job of this page. Not so far up that a
+     full-length shot loses its head off the top; 30% is the compromise that
+     held across all twelve. */
+  object-position: 50% 30%;
+  background: var(--icing);
+  box-shadow: 0 0 0 3px var(--card), 0 0 0 4px var(--line);
+  flex: none;
+}
+.cast-face.blank {
+  display: grid; place-items: center;
+  font-weight: 900; font-size: 2.2rem;
+  color: var(--btn);
+}
+
+.cast-body { min-width: 0; }
+.cast-name {
+  font-size: 1.15rem; margin: 0;
+  display: flex; align-items: center; gap: .4rem; flex-wrap: wrap;
+}
+.cast-bio { margin: .15rem 0 0; }
+.cast-foot { margin: .4rem 0 0; }
+
+.cast-chips { list-style: none; display: flex; flex-wrap: wrap; gap: .3rem; margin: .45rem 0 0; padding: 0; }
+.cast-chip {
+  font-size: .75rem; font-weight: 700;
+  padding: .12rem .5rem;
+  border-radius: 999px;
+  background: var(--pink-bg);
+  color: var(--ink);
+}
+.cast-chip b { font-weight: 900; }
+
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
@@ -874,4 +934,12 @@ textarea.input { resize: vertical; line-height: 1.4; }
   .lb-total { font-size: 1.7rem; }
   .wall { grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr)); gap: 1.4rem; }
   .wall-card + .wall-card { border-top: none; padding-top: 0; }
+
+  /* Two columns of cards, and the rule between them goes: a border down a grid
+     of cards reads as a table it isn't. */
+  .cast { grid-template-columns: repeat(auto-fill, minmax(22rem, 1fr)); gap: 1.4rem; }
+  .cast-card + .cast-card { border-top: none; padding-top: 0; }
+  /* Room to spare here, and these are portraits of twelve people nobody can
+     tell apart yet — which is the entire problem this page exists to solve. */
+  .cast-face { width: 7rem; height: 7rem; }
 }

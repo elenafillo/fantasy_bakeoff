@@ -32,11 +32,15 @@ late September 2026), so nothing is time-pressured yet.
 | **3 — GM panel** | ✅ **Done.** All five tabs. Live and Episodes have been used in a browser; Entries, Players and Bakers are checked against the live database but **not yet looked at** — see below. |
 | **4 — scoring wired into `/play`** | ✅ **Done.** SQL applied, smoke test passing, and seen in a browser with real results entered from the GM panel. |
 | **5 — dashboard** | ✅ **Done.** Chart, leaderboard, results grid, prediction wall and the series recap. No SQL changes. Looked at on a phone. |
-| 6 — `/bakers`, `/rules`, top-three picks, stats | ⬜ |
-| 7 — avatar builder, visual polish | ⬜ |
+| 6 — `/bakers`, `/rules`, top-three picks, stats | 🟨 **`/bakers` built.** `/rules`, top-three picks and the stats strip still to do. |
+| 7 — avatar builder, visual polish | ⬜ Not started, but **the spec and the art brief are written** — DESIGN §11, [ASSETS.md](ASSETS.md), `src/avatar/TEMPLATE.svg` |
 
 Live database state: league **In The Oven** (`in-the-oven`, default), 2 players,
-12 placeholder bakers, 10 episodes with no air dates.
+12 bakers, 10 episodes with no air dates.
+
+⚠️ **[supabase/cast_2026.sql](supabase/cast_2026.sql) is written and has not been
+pasted yet.** Until it is, the twelve bakers are still called "Baker One" and
+`/bakers` shows monograms instead of faces.
 
 ---
 
@@ -432,6 +436,110 @@ says which of the two reasons applies rather than showing a blank.
   is the least live thing on the page.
 
 **Leagues** — later; one league is enough for now.
+
+---
+
+## Phase 6: `/bakers`
+
+✅ **Built**, and looked at in a browser at both widths.
+
+**No SQL, no endpoint, no new grant.** `v_baker_stats` already published
+`photo_url` and `bio_line` and was already granted to the publishable key, and
+the GM panel's Bakers tab already had fields for all three. The page reads that
+one view and nothing else, so it costs zero Vercel invocations like the rest of
+the read-only half of the app.
+
+**It fetches once and does not poll**, per TECH_PLAN §8. `v_baker_stats` is
+twelve correlated subqueries and this is the page you open while *deciding*
+picks, not while watching them score — the dashboard is the live one. A baker
+eliminated mid-episode needs a reload here, which is the trade.
+
+**Everything on zero is left out entirely.** Chips, weeks survived and the wry
+line are all conditional, because twelve cards reading "0 weeks in the tent" on
+the morning of episode 1 is noise, and TECH_PLAN §5 asks for stats that fill in
+as the series runs. Before the first result a card is a face, a name and a line.
+
+**Nothing on this page is driven by what players predicted, deliberately.**
+`v_baker_stats` also carries `picked_best`, `picked_leaving` and
+`in_top_threes`, and the first version printed the wry one — "written off twice,
+still here". Elena had it taken out: `/bakers` is the cast reference you read
+while *deciding* your picks, and how the league has voted is a fact about the
+players, not about the baker. **Those stats belong in the dashboard's stats
+strip**, which is still to build, and where "the most-predicted-to-leave baker
+who keeps surviving" is already on the list in TECH_PLAN §5.
+
+Two things fall out of keeping them off, both worth preserving if anyone is
+tempted to put them back:
+
+- The page shows only what happened in the tent, so it needs **no deadline
+  reasoning of any kind**. Every other surface that touches predictions has to
+  care about `deadline_at`; this one does not.
+- It sidesteps `in_top_threes` entirely — see the warning below.
+
+Whoever builds the stats strip should know that these counts are **series-wide,
+not league-wide**: they come from `v_public_predictions`, which carries rows for
+every league playing the season, and `v_baker_stats` has no league filter and
+cannot easily get one since it is keyed on the baker. With one league running
+they are the same number. Arguably "written off by half the country" is the
+better version of the stat anyway, but it should be a decision, not a surprise.
+
+Note **TECH_PLAN §5 still lists the league-flavoured stats under `/bakers`** and
+is now out of date on that point. Elena owns that file.
+
+### The cast
+
+[supabase/cast_2026.sql](supabase/cast_2026.sql) renames the twelve placeholders
+to the real 2026 cast and gives each a bio line and a photo. **Paste it in the
+Supabase editor** — it is the only outstanding step for this page.
+
+It **updates rather than deletes and reinserts, so the ids stay put** and any
+picks already made against a placeholder survive (TECH_PLAN open question #2
+asks for exactly that). Keyed on `sort_order` rather than the placeholder names,
+so it is idempotent: re-run it freely to fix a bio or swap a URL. It touches no
+view, no grant and no policy, so nothing needs re-pasting after it and
+`smoke_test.sql` is unaffected.
+
+The bio lines are **ours, not the broadcaster's** — one wry line each, in the
+register the placeholders were written in, rather than the site's prose. Names,
+regions and photos come from
+[the cast page](https://thegreatbritishbakeoff.co.uk/meet-the-class-of-2026/).
+
+**The photos are hotlinked** from the broadcaster's CDN. They serve 200 to a
+foreign referer today, so it works — but it is somebody else's URL and will
+break eventually, on their schedule. `photo_url` is nullable and every card
+falls back to a monogram disc, so a dead link degrades to what the page looked
+like before the cast landed rather than to a broken image. If they ever do turn
+hotlinking off, the fix is to re-host the twelve files.
+
+**The crop is biased upward** (`object-position: 50% 30%`). The press shots are
+waist-up, so a centred circular crop frames the middle of an apron and pushes
+the face to the top edge — which defeats the one job this page has. 30% was the
+value that framed all twelve heads without decapitating the full-length shots.
+
+### What phase 6 still needs
+
+- **`/rules`** — still the stub. No SQL, no endpoint; it is the short version of
+  [RULES.md](RULES.md) plus open question #3 (the colophon wording).
+- **Top-three picks and the Top Three board** — the piece that needs SQL. See
+  the warning below before starting it.
+- **Stats strip** — most-picked baker of the week, best lone call, per-player
+  accuracy, biggest weekly haul. Mostly `v_baker_stats`, already granted.
+
+### ⚠️ Before you build top-three picks: `in_top_threes` has no lock gate
+
+`rls.sql` says `top_picks` is ungranted because "picks are private until their
+lock time". But `v_baker_stats.in_top_threes` counts `top_picks` directly with
+**no `top_picks_lock_at` gate**, and that view *is* granted to anon. So once
+people start making top-three picks, anyone can read how many players have
+already backed each baker — before the reveal at the start of episode 2 that
+RULES §5 promises.
+
+It is harmless today because `top_picks` is empty, and `/bakers` deliberately
+does **not** render that stat. Fix it when the picks land, not before — either
+gate the subquery on `season_settings.top_picks_lock_at` the way
+`v_public_predictions` gates on `deadline_at`, or drop the column. Note that
+`create or replace view` may only append columns, so dropping it is a full drop
+and recreate with everything downstream; gating it in place is the cheap edit.
 
 ---
 

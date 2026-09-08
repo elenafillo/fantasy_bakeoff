@@ -298,23 +298,36 @@ people will be watching on the sofa with their phone in hand, so this is
   says who is in whose three, so a board needs a new view as well as the API.
 - **Stats strip** — most-picked baker of the week, best lone call (something only
   one person got right), per-player accuracy by category, the
-  most-predicted-to-leave baker who keeps surviving, biggest weekly haul.
+  most-predicted-to-leave baker who keeps surviving, biggest weekly haul. This
+  is where the **league-flavoured baker stats** live — `picked_best`,
+  `picked_leaving` and `in_top_threes` off `v_baker_stats`. They were tried on
+  `/bakers` first and moved here: how the league has voted is a fact about the
+  players, not about the baker. Note they count across **every league playing
+  the season**, since `v_public_predictions` carries rows for all of them and
+  `v_baker_stats` is keyed on the baker with no league filter.
 
 On a phone this becomes a vertical stack in that order, with the stats strip and
 recap collapsed behind a tap.
 
 ### `/bakers`
 
-A reference grid, so people can remember who's who while picking.
+✅ **Built in phase 6.** A reference grid, so people can remember who's who while
+picking. No SQL and no endpoint: `v_baker_stats` already carried everything and
+was already granted.
 
 - One card per baker: photo, name, one-line bio.
 - Stats fill in as the series runs — Star Bakers, technical wins, handshakes,
-  weeks survived, and league-flavoured ones like *"picked to leave 7 times,
-  still here"*. All from `v_baker_stats`.
+  bingo hits, weeks survived. All from `v_baker_stats`, and **anything on zero
+  is not rendered at all**, so before episode 1 a card is a face, a name and a
+  line.
+- **Only what happened in the tent.** No stat here is derived from what players
+  predicted, even though `v_baker_stats` carries three that are — those are the
+  stats strip's, above. The consequence worth keeping: this page touches no
+  prediction data, so it needs no deadline reasoning of any kind.
 - **Eliminated bakers go grey and sink to the bottom of the grid**, with the
   episode they left. Sorting is `status`, then `eliminated_episode desc`, then
   `sort_order` — so the freshly departed sit just below the survivors.
-- Anon-readable, no login.
+- Anon-readable, no login. Fetches once, never polls (§8).
 
 ### `/rules`
 
@@ -552,7 +565,7 @@ before we're finished.
 | **3** | ✅ `/gm` — all five tabs: Live, Episodes, Entries, Players, Bakers. | scoring |
 | **4** | ✅ Scoring wired up; the scorecard and standings on `/play`. Adds `v_episode_results_public` — **paste `views.sql` and `rls.sql` again** | 5 |
 | **5** | ✅ `/` dashboard — chart, leaderboard, results grid, prediction wall, and the series recap from §5. **No SQL**: every view it needs was already granted, so there is nothing to paste. | showable |
-| **6** | `/bakers`, `/rules`, top-three picks and series bonuses, stats strip | — |
+| **6** | 🟨 `/bakers` ✅ built — **no SQL**. Still to do: `/rules`, top-three picks and series bonuses, stats strip | — |
 | **7** | Avatar builder with your friend's SVGs; visual design pass | — |
 
 **Minimum to run week 1: phases 0–4.** The dashboard can arrive in week 2 without
@@ -599,7 +612,7 @@ Vercel hobby. A custom domain, if you ever want one, is ~£10/year — otherwise
 | # | Question |
 |---|----------|
 | 1 | **Series start date** — ten episodes confirmed; the date isn't announced yet, expected late September 2026. Episodes are seeded with numbers and a null `air_date`; dates fill in when announced and the deadline follows automatically. |
-| 2 | **The cast** — twelve placeholder bakers are seeded so the panel works. Rename them when the real names land (keeps their ids, so test picks survive). |
+| 2 | ✅ **The cast** — announced and applied. [supabase/cast_2026.sql](supabase/cast_2026.sql) renamed the twelve placeholders in place, so their ids survived along with the test picks made against them. Photos are **hotlinked** from the broadcaster; `photo_url` is nullable and `/bakers` falls back to a monogram, so a dead link degrades rather than breaks. **Left over:** the phase 3/4 test results are now attached to real names — Gabe reads as eliminated in episode 1, Gary as a Star Baker — and want clearing before the link goes round. |
 | 3 | **Exact colophon wording** for `/rules`, and the link for "the official Fantasy Bake Off" |
 | 4 | **How many players?** Sets the identity-palette size — 16 hues is comfortable, beyond ~20 they stop being tellable apart even beside a name. |
 | 5 | A display face for headings (DESIGN.md §9) — must be freely licensable |
