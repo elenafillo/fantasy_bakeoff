@@ -856,6 +856,68 @@ textarea.input { resize: vertical; line-height: 1.4; }
 .recap-row dd { margin: 0; font-weight: 800; text-align: right; }
 .recap-row dd.hatched { padding: 0 .3rem; border-radius: 4px; }
 
+/* ---- The top three (/play) ---- */
+
+.th-head { font-size: 1.15rem; margin: 0 0 .2rem; }
+
+.th-grid {
+  list-style: none; margin: 1rem 0 .6rem; padding: 0;
+  display: grid; gap: .45rem;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+}
+.th-chip {
+  width: 100%;
+  font: inherit; font-weight: 800;
+  padding: .6rem .5rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+  /* 44px targets: this is picked once, on a phone, probably at speed. */
+  min-height: 2.75rem;
+}
+.th-chip:hover:not(:disabled) { border-color: var(--accent); }
+/* Chosen carries a tint AND a heavier border AND the checkmark below, never
+   colour alone (DESIGN §5). */
+.th-chip.on {
+  border-color: var(--btn);
+  background: var(--icing);
+  color: var(--btn);
+}
+.th-chip.on::before { content: '✓ '; font-weight: 900; }
+.th-chip:disabled { color: var(--ink-soft); cursor: default; }
+.th-chip.on:disabled { color: var(--btn); }
+
+.th-locked { margin: .6rem 0 0; padding-left: 1.15rem; font-weight: 800; }
+.th-locked li { margin: .2rem 0; }
+
+/* ---- The top three board (dashboard) ---- */
+
+.th-board-head { font-size: 1.15rem; margin: 0 0 .2rem; }
+.th-board { list-style: none; margin: 1rem 0 0; padding: 0; display: grid; gap: .7rem; }
+.th-board-row { display: grid; gap: .35rem; }
+.th-board-row + .th-board-row { border-top: 2px solid var(--line); padding-top: .7rem; }
+.th-board-who { display: flex; align-items: center; gap: .45rem; min-width: 0; }
+.th-board-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.th-board-picks { list-style: none; display: flex; flex-wrap: wrap; gap: .3rem; margin: 0; padding: 0; }
+.th-board-pick {
+  font-size: .82rem; font-weight: 800;
+  padding: .2rem .55rem;
+  border-radius: 999px;
+  background: var(--pink-bg);
+  color: var(--ink);
+}
+/* Greyed AND struck AND labelled for a screen reader. Watching your three go
+   home one by one is most of the point, so they never disappear. */
+.th-board-pick.gone {
+  background: var(--card);
+  box-shadow: 0 0 0 2px var(--line) inset;
+  color: var(--ink-soft);
+  text-decoration: line-through;
+}
+
 /* ---- The cast grid (/bakers) ---- */
 
 .cast-count { margin: .1rem 0 0; }
@@ -934,6 +996,9 @@ textarea.input { resize: vertical; line-height: 1.4; }
   .lb-total { font-size: 1.7rem; }
   .wall { grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr)); gap: 1.4rem; }
   .wall-card + .wall-card { border-top: none; padding-top: 0; }
+
+  /* Name in its own column so the three chips line up down the board. */
+  .th-board-row { grid-template-columns: 10rem 1fr; align-items: center; gap: .8rem; }
 
   /* Two columns of cards, and the rule between them goes: a border down a grid
      of cards reads as a table it isn't. */

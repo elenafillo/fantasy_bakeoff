@@ -183,7 +183,7 @@ export async function fetchLive(league) {
   const ids = standings.map((r) => r.player_id)
   const inLeague = `in.(${ids.join(',')})`
 
-  const [scores, predictions] = await Promise.all([
+  const [scores, predictions, topPicks] = await Promise.all([
     ids.length
       ? supabase.query('v_episode_scores', {
           select:
@@ -198,9 +198,23 @@ export async function fetchLive(league) {
           params: { episode_id: `eq.${currentEpisode.id}`, player_id: inLeague },
         })
       : [],
+    // Empty until episode 2's deadline, by design — v_top_picks_public applies
+    // the same fail-closed gate as v_public_predictions, on episode 2's clock
+    // (RULES §5). The board says which of the two reasons applies rather than
+    // showing a blank, exactly as the prediction wall does.
+    //
+    // The player filter is load-bearing here for the same reason as above: this
+    // view carries no league_id and holds rows for every league in the season.
+    ids.length
+      ? supabase.query('v_top_picks_public', {
+          select: 'player_id,baker_id,baker_name,baker_status,rank',
+          params: { player_id: inLeague },
+          order: 'rank.asc',
+        })
+      : [],
   ])
 
-  return { episodes, currentEpisode, standings, results, scores, predictions }
+  return { episodes, currentEpisode, standings, results, scores, predictions, topPicks }
 }
 
 // ------------------------------------------------------------

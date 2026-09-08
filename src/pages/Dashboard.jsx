@@ -8,6 +8,7 @@ import { PointsChart } from '../components/PointsChart.jsx'
 import { ResultsGrid } from '../components/ResultsGrid.jsx'
 import { PredictionWall } from '../components/PredictionWall.jsx'
 import { SeriesRecap } from '../components/SeriesRecap.jsx'
+import { TopThreeBoard } from '../components/TopThreeBoard.jsx'
 import { Link } from '../lib/Link.jsx'
 
 /**
@@ -225,6 +226,16 @@ export default function Dashboard({ slug }) {
         scores={live.scores}
         episode={episode}
         meId={resolved.you}
+      />
+
+      {/* Below the wall, above the recap: it changes about four times a series,
+          so it sits under everything that changes weekly — but it is a live
+          story ("three people are riding on Priya"), not history, so it stays
+          out of the recap. */}
+      <TopThreeBoard
+        topPicks={live.topPicks}
+        standings={live.standings}
+        episodeTwo={live.episodes.find((e) => e.number === 2) ?? null}
       />
 
       <SeriesRecap

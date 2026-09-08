@@ -104,6 +104,21 @@ Up to five rows per entry, one per category.
 
 **`top_picks`** — `id, player_id, baker_id, rank, submitted_at, is_late,
 is_disallowed`
+Three rows per player, for the series. Unique on `(player_id, rank)` and on
+`(player_id, baker_id)`, so "exactly three, all different" is the database's
+problem and not the UI's. `rank` is a slot, **not** a preference — RULES §5 says
+the three are in no particular order and nothing scores them differently.
+`is_disallowed` is carried by the scoring views but nothing sets it: the GM has
+no need to disallow a top three, and the column stays for symmetry with
+`entries`.
+
+**`season_settings`** — `season_id, top_picks_lock_at`
+⚠️ **`top_picks_lock_at` is dead.** It stored the moment the top three lock,
+which RULES §5 defines as episode 2's own deadline — so it was a second date
+that could disagree with the first, plus a GM control to keep them in step. Both
+the lock (`api/player.js`) and the reveal (`v_top_picks_public`) now derive from
+episode 2, which follows `air_date` through the deadline trigger for free. Left
+in place, but do not wire it back up.
 
 **`categories`** — `key, label, points, sort_order, applies_to`
 A config table, not code: `best (+4), leaving (+3), technical (+2), bingo (+2),
@@ -293,9 +308,12 @@ people will be watching on the sofa with their phone in hand, so this is
 - **Series recap** — episodes × categories, who won what. ✅ built in phase 5;
   it is where last night's ticks live once an episode is marked complete, since
   the results grid follows the same "current episode" rule as `/play`.
-- **Top Three board** — from episode 2, everyone's three, dead ones greyed.
-  **Phase 6**, and it needs SQL: `top_picks` is ungranted and no granted view
-  says who is in whose three, so a board needs a new view as well as the API.
+- **Top Three board** — ✅ built in phase 6. Everyone's three, in standings
+  order, dead picks greyed and struck rather than dropped — you are stuck with
+  your three, and watching them go is most of the fun. It reads
+  `v_top_picks_public`, added for it, since `v_series_bonus` carries points only
+  and `v_baker_stats` a count per baker. Empty until episode 2's deadline, and
+  it says which of the two reasons applies rather than showing a blank.
 - **Stats strip** — most-picked baker of the week, best lone call (something only
   one person got right), per-player accuracy by category, the
   most-predicted-to-leave baker who keeps surviving, biggest weekly haul. This
@@ -383,8 +401,8 @@ Two endpoints. Everything is a `POST` with an `action` field, like worm-street's
 
 **`POST /api/player`** — body carries the player's code, always re-verified
 server-side.
-`login` · `getEntry` · `saveEntry` · `confirmEntry` · `saveTopPicks` ·
-`saveAvatar`
+Built: `login` · `state` · `savePicks` · `saveTopPicks` · `confirm`.
+To come: `saveAvatar` (phase 7).
 
 `saveEntry` is where the lateness rules live, and all of it is server-side:
 
@@ -394,6 +412,19 @@ deadline_at < now < live_at              → late
 now > live_at, gm_unlocked_at is null    → 403, panel is locked
 now > live_at, gm_unlocked_at is set     → very_late
 ```
+
+`saveTopPicks` runs **the same ladder against episode 2** — literally the same
+`lockState()` call, so the two cannot drift. The window opens when episode 1 is
+marked complete ("after you have seen everyone bake once") and closes on episode
+2's clock, which means one GM door-opening covers both a player's episode-2
+picks and their three. That is the right shape: it is one conversation with the
+GM, not two.
+
+One request states the whole answer — three bakers or nothing, same as
+`setCategory` below — so "exactly three, all different" cannot be broken by a
+half-finished edit. It replaces rather than upserts, because `top_picks` is
+unique on both `(player_id, rank)` and `(player_id, baker_id)` and swapping two
+of your three would otherwise collide with a row the same edit is about to move.
 
 **`POST /api/gm`** — body carries the GM password, checked against
 `process.env.GM_PASSWORD` on every call (no sessions, no tokens — same as
@@ -565,7 +596,7 @@ before we're finished.
 | **3** | ✅ `/gm` — all five tabs: Live, Episodes, Entries, Players, Bakers. | scoring |
 | **4** | ✅ Scoring wired up; the scorecard and standings on `/play`. Adds `v_episode_results_public` — **paste `views.sql` and `rls.sql` again** | 5 |
 | **5** | ✅ `/` dashboard — chart, leaderboard, results grid, prediction wall, and the series recap from §5. **No SQL**: every view it needs was already granted, so there is nothing to paste. | showable |
-| **6** | 🟨 `/bakers` ✅ built — **no SQL**. Still to do: `/rules`, top-three picks and series bonuses, stats strip | — |
+| **6** | 🟨 `/bakers` ✅ and top-three picks ✅ (picker on `/play`, board on `/`). The top three adds `v_top_picks_public` and gates `v_baker_stats.in_top_threes` — **paste `views.sql`, `rls.sql` and `smoke_test.sql` again**. Still to do: `/rules`, stats strip | — |
 | **7** | Avatar builder with your friend's SVGs; visual design pass | — |
 
 **Minimum to run week 1: phases 0–4.** The dashboard can arrive in week 2 without

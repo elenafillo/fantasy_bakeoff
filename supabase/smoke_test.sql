@@ -185,6 +185,54 @@ begin
   select has_winner into got_bool from v_series_bonus where player_id = p1;
   assert got_bool, 'The winner is in P1''s top three, so has_winner should be true.';
 
+  -- ---- THE TOP THREE GATE ----------------------------------------------
+  -- The deadline gate again, on the same clock. RULES §5 reveals everyone's
+  -- three at the start of episode 2 — which IS episode 2's deadline, and is why
+  -- v_top_picks_public derives the moment from the episode rather than storing
+  -- a second date. This is the assertion standing between a private pick and
+  -- the whole league reading it a week early.
+
+  select count(*) into got from v_top_picks_public where player_id = p1;
+  assert got = 0, format(
+    'LEAK: episode 2''s deadline has not passed but %s top pick(s) are public.', got);
+
+  -- The aggregate route to the same secret, and the reason this gate is not
+  -- just about the new view: v_baker_stats is granted, so an ungated count here
+  -- published "N people are riding on Baker A" as surely as naming them would.
+  select in_top_threes into got from v_baker_stats where baker_id = baker_a;
+  assert got = 0, format(
+    'LEAK: v_baker_stats.in_top_threes must read v_top_picks_public, not '
+    'top_picks, so that it respects the episode 2 gate. Got %s.', got);
+
+  -- Now let the reveal happen and check that it actually does — a gate welded
+  -- shut passes both assertions above for entirely the wrong reason.
+  update episodes set deadline_at = now() - interval '1 hour' where id = ep2;
+
+  select count(*) into got from v_top_picks_public where player_id = p1;
+  assert got = 3, format(
+    'Episode 2''s deadline has passed, so all 3 of P1''s top picks should be '
+    'public, got %s.', got);
+
+  select baker_name into got_text from v_top_picks_public where player_id = p1 and rank = 1;
+  assert got_text = 'Baker A', format(
+    'v_top_picks_public must carry the baker''s NAME: the browser cannot look up '
+    'one who has left the tent. Got %s.', coalesce(got_text, 'NULL'));
+
+  -- Dead picks are greyed on the board, never dropped — you are stuck with your
+  -- three even after one goes home (RULES §5). Baker D was eliminated above.
+  select count(*) into got from v_top_picks_public
+   where player_id = p1 and baker_status = 'eliminated';
+  assert got = 1, format(
+    'An eliminated top pick must still appear, to be greyed rather than vanish. Got %s.', got);
+
+  select in_top_threes into got from v_baker_stats where baker_id = baker_a;
+  assert got = 1, format('Baker A is in one top three, got %s.', got);
+
+  -- Put it back. The picked_best assertion below depends on episode 2's picks
+  -- still being private, and would otherwise fail for a reason that has nothing
+  -- to do with what it is testing.
+  update episodes set deadline_at = now() + interval '1 day' where id = ep2;
+
   -- ---- standings -------------------------------------------------------
 
   select total_points into got from v_standings where player_id = p1;

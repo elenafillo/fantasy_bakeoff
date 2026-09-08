@@ -84,6 +84,47 @@ where ep.deadline_at is not null
   and ep.deadline_at <= now();
 
 -- ------------------------------------------------------------
+-- Public top three — the SAME load-bearing filter, on episode 2
+-- ------------------------------------------------------------
+-- Who is in whose top three. Nothing granted said this before: v_series_bonus
+-- carries points only and v_baker_stats a count per baker, so a Top Three board
+-- had no way to name anyone.
+--
+-- The gate is episode 2's deadline, and that is not a coincidence — RULES §5
+-- locks the top three at 18:00 on the Tuesday before episode 2, which IS
+-- episode 2's deadline. Deriving it from the episode rather than storing a
+-- second date means the two can never disagree, and it follows air_date through
+-- schema.sql's trigger for free. `season_settings.top_picks_lock_at` was the
+-- stored version of this and is now DEAD — see the note on it in schema.sql.
+--
+-- `deadline_at is not null` FAILS CLOSED, exactly as above: no date set, no
+-- reveal. Episode 2 has no air date yet, so that is today's live behaviour and
+-- an empty board is the system working.
+--
+-- Carries baker_name for the same reason v_episode_results_public does: by the
+-- time this board matters, some of these bakers are out of the tent and gone
+-- from every cast list the browser can reach.
+--
+-- Like every other scoring view it holds rows for EVERY league playing the
+-- season — seasons are shared by design — so callers filter by the player ids
+-- from v_standings. Dropping that filter puts a stranger's three on the board.
+
+create or replace view v_top_picks_public as
+select
+  tp.player_id,
+  tp.baker_id,
+  b.name   as baker_name,
+  b.status as baker_status,
+  tp.rank,
+  tp.is_late,
+  tp.is_disallowed
+from top_picks tp
+join bakers   b  on b.id = tp.baker_id
+join episodes ep on ep.season_id = b.season_id and ep.number = 2
+where ep.deadline_at is not null
+  and ep.deadline_at <= now();
+
+-- ------------------------------------------------------------
 -- Per-prediction scoring
 -- ------------------------------------------------------------
 -- EXISTS, not a join to episode_results. With several correct bakers in one
@@ -310,7 +351,12 @@ select
      where vp.baker_id = b.id and vp.category = 'best'    and not vp.is_disallowed) as picked_best,
   (select count(*) from v_public_predictions vp
      where vp.baker_id = b.id and vp.category = 'leaving' and not vp.is_disallowed) as picked_leaving,
-  (select count(*) from top_picks tp
+  -- Reads v_top_picks_public, NOT top_picks. Going to the base table leaked the
+  -- top three before the reveal: this view is granted to anon, so "seven people
+  -- are riding on Priya" was readable from the moment picks opened, which is
+  -- precisely what RULES §5's episode-2 reveal exists to prevent. Same bug as
+  -- the header warns about for predictions, and the same fix.
+  (select count(*) from v_top_picks_public tp
      where tp.baker_id = b.id and not tp.is_disallowed) as in_top_threes,
   -- Episodes completed before they left; still-active bakers count every
   -- completed episode. The "written off N times and still here" stat pairs

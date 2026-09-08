@@ -81,6 +81,7 @@ grant select on v_leagues_public     to anon, authenticated;
 grant select on v_categories_public  to anon, authenticated;
 grant select on v_players_public     to anon, authenticated;
 grant select on v_public_predictions to anon, authenticated;
+grant select on v_top_picks_public   to anon, authenticated;
 grant select on v_episode_scores     to anon, authenticated;
 grant select on v_series_bonus       to anon, authenticated;
 grant select on v_standings          to anon, authenticated;
@@ -89,8 +90,9 @@ grant select on v_episodes_public    to anon, authenticated;
 grant select on v_episode_results_public to anon, authenticated;
 
 -- Deliberately NOT granted, and worth stating so nobody adds them later by
--- reflex: players (codes), entries, predictions, top_picks (picks are private
--- until their lock time), episode_results (reached via v_baker_stats and
+-- reflex: players (codes), entries, predictions, top_picks (private until
+-- episode 2's deadline — reached via v_top_picks_public, which applies that
+-- gate), episode_results (reached via v_baker_stats and
 -- v_episode_results_public, which expose what happened without the row ids or
 -- the GM's typing times), season_settings.
 --

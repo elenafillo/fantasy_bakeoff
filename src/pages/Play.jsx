@@ -110,7 +110,7 @@ function Login({ onIn, error }) {
 function Entry({ state, code, setState, onOut }) {
   const {
     player, league, episode, categories, bakers, bakerNames,
-    entry, editable, lockReason, wouldBe, standings,
+    entry, editable, lockReason, wouldBe, standings, topThree,
   } = state
 
   // Picks are local until saved, so changing your mind is free and the server
@@ -202,6 +202,7 @@ function Entry({ state, code, setState, onOut }) {
     try {
       setState(await playerPost(action, code, { episodeId: episode.id, ...extra }))
       if (action === 'savePicks') setFlash('Saved')
+      if (action === 'saveTopPicks') setFlash('Your top three is in')
       // A save can change the score, not just the picks: a VERY LATE entry the
       // GM opened the door for is submitted with results already in. Cheap to
       // re-read — it is a Supabase query, not a Vercel invocation.
@@ -349,6 +350,147 @@ function Entry({ state, code, setState, onOut }) {
           </p>
         )}
       </Panel>
+
+      {/* After the weekly picks, because that is the order of importance every
+          week except one: this is a once-per-series item and the panel above is
+          the reason people opened the page. */}
+      <TopThree
+        topThree={topThree}
+        bakers={bakers}
+        bakerNames={bakerNames}
+        busy={busy}
+        onSave={(bakerIds) => send('saveTopPicks', { bakerIds })}
+      />
     </>
+  )
+}
+
+// ------------------------------------------------------------
+// The top three — RULES §5
+// ------------------------------------------------------------
+/**
+ * Once per series: pick three bakers to reach the final, after you have seen
+ * everyone bake once. No order, no swaps, ever.
+ *
+ * The window and the lateness ladder are episode 2's, computed server-side in
+ * api/player.js by the same `lockState` the weekly picks use — so everything
+ * here is presentation. `topThree.editable` decides whether this is a form or a
+ * receipt; the server decides again on save.
+ *
+ * Chosen bakers are a SET, not three ranked slots. Three selects would have
+ * implied an order that RULES §5 explicitly does not have, and would have made
+ * "you cannot pick the same person twice" a rule to explain rather than one the
+ * interface makes unavailable.
+ */
+function TopThree({ topThree, bakers, bakerNames, busy, onSave }) {
+  const [chosen, setChosen] = useState(topThree.picks)
+
+  // Re-sync on a fresh server state, the same way the weekly picks do.
+  const [seen, setSeen] = useState(topThree.picks)
+  if (seen !== topThree.picks) {
+    setSeen(topThree.picks)
+    setChosen(topThree.picks)
+  }
+
+  // Nothing to say yet — usually because episode 1 is still to come.
+  if (!topThree.open) {
+    if (!topThree.reason) return null
+    return (
+      <Panel head="Your top three">
+        <p className="muted">{topThree.reason}</p>
+        <p className="small muted">
+          Three bakers to reach the final. {topThree.count === 3 ? '+3' : ''} each if they
+          do, +6 more if one of them wins it.
+        </p>
+      </Panel>
+    )
+  }
+
+  const full = chosen.length === topThree.count
+  const same =
+    chosen.length === topThree.picks.length &&
+    chosen.every((id) => topThree.picks.includes(id))
+
+  function toggle(id) {
+    setChosen((prev) =>
+      prev.includes(id)
+        ? prev.filter((x) => x !== id)
+        // Silently ignoring the fourth tap would look broken, so the buttons
+        // are disabled at three instead and the count below says why.
+        : prev.length >= topThree.count ? prev : [...prev, id]
+    )
+  }
+
+  return (
+    <Panel head="Your top three">
+      <h2 className="th-head">Three bakers, for the whole series</h2>
+      <p className="small muted">
+        +3 for each one who reaches the final, and +6 more if one of them wins it.
+        In no particular order — and <strong>no swaps later</strong>, even if one
+        goes home.
+      </p>
+
+      {!topThree.editable ? (
+        <>
+          <p className="notice">{topThree.reason ?? 'Locked in.'}</p>
+          {topThree.picks.length > 0 ? (
+            <ul className="th-locked">
+              {topThree.picks.map((id) => (
+                <li key={id}>{bakerNames[id] ?? 'Unknown baker'}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="small muted">
+              You didn&rsquo;t pick a top three, so there are no series bonuses to come.
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          {topThree.wouldBe !== 'on_time' && (
+            <p className="notice">
+              {topThree.wouldBe === 'late'
+                ? 'The deadline has passed — this will be marked LATE.'
+                : 'The episode has started. The GM opened this for you, so it will be marked VERY LATE.'}
+            </p>
+          )}
+
+          <ul className="th-grid">
+            {bakers.map((b) => {
+              const on = chosen.includes(b.id)
+              return (
+                <li key={b.id}>
+                  <button
+                    type="button"
+                    className={`th-chip ${on ? 'on' : ''}`}
+                    aria-pressed={on}
+                    disabled={busy || (full && !on)}
+                    onClick={() => toggle(b.id)}
+                  >
+                    {b.name}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+
+          <p className="small muted">
+            {chosen.length} of {topThree.count} chosen.
+            {' '}
+            {/* The deadline is episode 2's, and the window is only ever open
+                while episode 2 is the current one — so this always IS the same
+                clock as the panel above, and a second countdown ticking beside
+                the first would only invite the question of which one counts. */}
+            Locks with this week&rsquo;s picks.
+          </p>
+
+          <div className="actions">
+            <button className="btn" disabled={busy || !full || same} onClick={() => onSave(chosen)}>
+              {same && full ? 'Saved' : 'Save my three'}
+            </button>
+          </div>
+        </>
+      )}
+    </Panel>
   )
 }

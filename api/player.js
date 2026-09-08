@@ -1,7 +1,7 @@
 // ============================================================
 // POST /api/player — everything a player does
 // ============================================================
-// Actions: login · state · savePicks · confirm
+// Actions: login · state · savePicks · saveTopPicks · confirm
 //
 // Every call carries the player's two-word code and every call re-verifies it.
 // There is no session and no token: the code IS the credential, so a request
@@ -25,6 +25,19 @@ import { currentEpisode, categoriesFor } from './_episodes.js'
 // buildState and savePicks must agree: the picker would otherwise offer a baker
 // the save then refuses, or hide one it would have accepted.
 const PICKABLE = ['active', 'finalist', 'winner']
+
+// The top three ride on episode 2, and everything about them is derived from
+// it: RULES §5 opens the picks when episode 1 finishes and locks them at 18:00
+// on the Tuesday before episode 2 — which is episode 2's own deadline, to the
+// second. So the lock here is lockState() against episode 2, the same function
+// the weekly picks use, and the reveal in v_top_picks_public is episode 2's
+// `deadline_at`. One date, derived from `air_date` by the trigger in
+// schema.sql, and no way for the two ends to disagree.
+//
+// `season_settings.top_picks_lock_at` used to store that moment separately and
+// is now dead — see the warning on it in schema.sql.
+const TOP_PICKS_EPISODE = 2
+const TOP_PICKS_COUNT = 3
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only.' })
@@ -55,6 +68,9 @@ export default async function handler(req, res) {
 
       case 'savePicks':
         return await savePicks(res, player, body)
+
+      case 'saveTopPicks':
+        return await saveTopPicks(res, player, body)
 
       case 'confirm':
         return await confirm(res, player, body)
@@ -118,6 +134,93 @@ function lockState(episode, entry, now) {
 }
 
 // ------------------------------------------------------------
+// The top three — RULES §5
+// ------------------------------------------------------------
+/**
+ * Everything the panel needs about the once-per-series pick, resolved against
+ * episode 2 (see TOP_PICKS_EPISODE above).
+ *
+ * The window is open between episode 1 being marked complete — "after you have
+ * seen everyone bake once" — and episode 2's lock, which is the ordinary
+ * lateness ladder: on time, LATE after the deadline, VERY LATE only if the GM
+ * opened that player's episode-2 door, and shut otherwise. One door-opening
+ * therefore covers both their episode-2 picks and their three, which is the
+ * right behaviour: it is one conversation with the GM, not two.
+ *
+ * `picks` is the player's OWN three and is returned whatever the clock says —
+ * this endpoint is authenticated by the code, and you may always see your own.
+ * Everyone else's stays behind v_top_picks_public until episode 2's deadline.
+ */
+async function topThreeState(player, seasonId, currentEp, currentEntry, now) {
+  const [episodes, picks] = await Promise.all([
+    rest(
+      'episodes',
+      `select=id,number,status,deadline_at,live_at&season_id=eq.${seasonId}` +
+        `&number=in.(1,${TOP_PICKS_EPISODE})&order=number.asc`
+    ),
+    rest(
+      'top_picks',
+      `select=baker_id,rank,is_late,submitted_at&player_id=eq.${player.id}&order=rank.asc`
+    ),
+  ])
+
+  const epOne = episodes.find((e) => e.number === 1) ?? null
+  const epTwo = episodes.find((e) => e.number === TOP_PICKS_EPISODE) ?? null
+
+  const chosen = picks.map((p) => p.baker_id)
+  const base = {
+    picks: chosen,
+    isLate: picks[0]?.is_late ?? false,
+    submittedAt: picks[0]?.submitted_at ?? null,
+    deadlineAt: epTwo?.deadline_at ?? null,
+    liveAt: epTwo?.live_at ?? null,
+    count: TOP_PICKS_COUNT,
+  }
+
+  // Not open yet. Deliberately not an error state in the UI — before episode 1
+  // is done there is simply nothing to say, and the panel hides the section.
+  if (!epTwo) return { ...base, open: false, editable: false, reason: null, wouldBe: null }
+  if (epOne && epOne.status !== 'complete') {
+    return {
+      ...base,
+      open: false,
+      editable: false,
+      reason: 'Your top three opens once episode 1 is done.',
+      wouldBe: null,
+    }
+  }
+
+  // The entry carries gm_unlocked_at, and it is episode 2's entry that matters.
+  // Whenever the window is genuinely open, episode 2 IS the current episode —
+  // `pickCurrent` returns the lowest-numbered episode that is not complete, and
+  // the window closes when episode 2 completes — so the entry buildState has
+  // already fetched is the right one. Past that point the window is shut and
+  // no lateness decision is left to make.
+  const entry = currentEp?.id === epTwo.id ? currentEntry : null
+  const lock = lockState(epTwo, entry, now)
+
+  return {
+    ...base,
+    open: true,
+    editable: !lock.locked,
+    // lockState speaks about the episode, because that is what it is for. Said
+    // to someone looking at a once-per-series commitment, "That episode is
+    // over" is a non-sequitur — they are not looking at an episode. Same rule,
+    // same clock, told in terms of the thing on screen.
+    reason: lock.locked ? topThreeLockReason(epTwo, now) : null,
+    wouldBe: lock.lateness ?? null,
+  }
+}
+
+function topThreeLockReason(epTwo, now) {
+  const live = epTwo.live_at ? new Date(epTwo.live_at) : null
+  if (epTwo.status !== 'complete' && live && now >= live) {
+    return `Episode ${epTwo.number} has started, so the top three is closed. Ask the GM to open it for you.`
+  }
+  return 'Your top three is locked in for the rest of the series.'
+}
+
+// ------------------------------------------------------------
 // State
 // ------------------------------------------------------------
 
@@ -168,6 +271,8 @@ async function buildState(player) {
   const now = new Date()
   const lock = episode ? lockState(episode, entry, now) : { locked: true, reason: 'No episodes yet.' }
 
+  const topThree = await topThreeState(player, seasonId, episode, entry, now)
+
   return {
     player: {
       id: player.id,
@@ -194,6 +299,7 @@ async function buildState(player) {
     // What this save WOULD be flagged as, so the panel can warn before the
     // player commits rather than after.
     wouldBe: lock.lateness ?? null,
+    topThree,
     standings: standings[0] ?? null,
     serverNow: now.toISOString(),
   }
@@ -288,6 +394,91 @@ async function savePicks(res, player, body) {
     const list = toClear.map((c) => `"${c}"`).join(',')
     await restDelete('predictions', `entry_id=eq.${saved.id}&category=in.(${list})`)
   }
+
+  return res.status(200).json(await buildState(player))
+}
+
+// ------------------------------------------------------------
+// Saving the top three — RULES §5
+// ------------------------------------------------------------
+// One request states the whole answer: three bakers, or nothing. That is the
+// same shape as setCategory in api/gm.js and for the same reason — "you have
+// exactly three, all different" cannot be violated by a half-finished edit if
+// there is no way to add or remove one at a time.
+//
+// There is no un-picking and no swap. Once episode 2 locks, this refuses for
+// the rest of the series (RULES §5), which is enforced by lockState and not by
+// the absence of a button.
+
+async function saveTopPicks(res, player, body) {
+  const { bakerIds } = body
+
+  if (!Array.isArray(bakerIds) || bakerIds.length !== TOP_PICKS_COUNT) {
+    return res.status(400).json({ error: `Pick exactly ${TOP_PICKS_COUNT} bakers.` })
+  }
+  if (!bakerIds.every(isUuid)) {
+    return res.status(400).json({ error: 'That is not a baker.' })
+  }
+  if (new Set(bakerIds).size !== bakerIds.length) {
+    return res.status(400).json({ error: 'Three different bakers, please.' })
+  }
+
+  const seasonId = player.leagues.season_id
+  const now = new Date()
+
+  // The window and the lateness ladder, resolved exactly as the panel saw them
+  // — same function, same episode, server clock. A stale tab that still has the
+  // form open after the deadline gets the answer from here, not from its
+  // buttons.
+  const episode = await currentEpisode(seasonId)
+  let entry = null
+  if (episode) {
+    const rows = await rest(
+      'entries',
+      `select=*&player_id=eq.${player.id}&episode_id=eq.${episode.id}&limit=1`
+    )
+    entry = rows[0] ?? null
+  }
+
+  const state = await topThreeState(player, seasonId, episode, entry, now)
+  if (!state.open) {
+    return res.status(403).json({ error: state.reason ?? 'The top three is not open.' })
+  }
+  if (!state.editable) {
+    return res.status(403).json({ error: state.reason ?? 'Your top three is locked.' })
+  }
+
+  // Every id checked against the season's live cast before it goes anywhere
+  // near a query string. The picker hides eliminated bakers, but a tab left
+  // open across an episode still holds their ids — and the whole point of a
+  // top three is that you are backing someone who is still in.
+  const cast = await rest(
+    'bakers',
+    `select=id&season_id=eq.${seasonId}&status=in.(${PICKABLE.join(',')})`
+  )
+  const live = new Set(cast.map((b) => b.id))
+  if (!bakerIds.every((id) => live.has(id))) {
+    return res.status(400).json({ error: 'One of those bakers is not in the tent any more.' })
+  }
+
+  // Replace rather than upsert. `top_picks` is unique on (player_id, rank) AND
+  // on (player_id, baker_id), so upserting row by row can collide with a row
+  // this same edit is about to move — swapping two of your three would fail on
+  // the second write. Clearing first means the three rows land as one answer.
+  await restDelete('top_picks', `player_id=eq.${player.id}`)
+  await restInsert(
+    'top_picks',
+    bakerIds.map((bakerId, i) => ({
+      player_id: player.id,
+      baker_id: bakerId,
+      // Rank is a slot, not a preference: RULES §5 says the three are in no
+      // particular order, and nothing scores them differently. It exists to
+      // make "exactly three" a constraint the database can hold.
+      rank: i + 1,
+      submitted_at: now.toISOString(),
+      is_late: state.wouldBe !== 'on_time',
+    }))
+  )
 
   return res.status(200).json(await buildState(player))
 }

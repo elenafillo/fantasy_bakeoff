@@ -283,6 +283,18 @@ create table if not exists top_picks (
 -- season rather than hardcoded, because "the Tuesday before episode 2" is a
 -- date we won't know until the schedule is announced.
 
+-- ⚠️ `top_picks_lock_at` IS DEAD. Nothing reads it and nothing writes it.
+--
+-- It stored the moment the top three lock, which RULES §5 defines as 18:00 on
+-- the Tuesday before episode 2 — i.e. episode 2's own deadline. Storing it
+-- separately meant two dates that could disagree, and a second GM control to
+-- keep in step. Both the lock (api/player.js) and the reveal
+-- (v_top_picks_public) now derive from episode 2's `deadline_at`, so there is
+-- exactly one answer and it follows `air_date` through the trigger below.
+--
+-- Left in place rather than dropped because dropping it buys nothing. DO NOT
+-- wire it back up: a second source of truth for the lock is the bug this
+-- removed.
 create table if not exists season_settings (
   season_id        uuid primary key references seasons(id) on delete cascade,
   top_picks_lock_at timestamptz

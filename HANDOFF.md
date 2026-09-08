@@ -32,7 +32,7 @@ late September 2026), so nothing is time-pressured yet.
 | **3 — GM panel** | ✅ **Done.** All five tabs. Live and Episodes have been used in a browser; Entries, Players and Bakers are checked against the live database but **not yet looked at** — see below. |
 | **4 — scoring wired into `/play`** | ✅ **Done.** SQL applied, smoke test passing, and seen in a browser with real results entered from the GM panel. |
 | **5 — dashboard** | ✅ **Done.** Chart, leaderboard, results grid, prediction wall and the series recap. No SQL changes. Looked at on a phone. |
-| 6 — `/bakers`, `/rules`, top-three picks, stats | 🟨 **`/bakers` built.** `/rules`, top-three picks and the stats strip still to do. |
+| 6 — `/bakers`, `/rules`, top-three picks, stats | 🟨 **`/bakers` and the top three built**, both applied to the live database. `/rules` and the stats strip still to do. |
 | 7 — avatar builder, visual polish | ⬜ Not started, but **the spec and the art brief are written** — DESIGN §11, [ASSETS.md](ASSETS.md), `src/avatar/TEMPLATE.svg` |
 
 Live database state: league **In The Oven** (`in-the-oven`, default), 2 players,
@@ -63,6 +63,12 @@ where ep.deadline_at is not null    -- fails closed: no deadline set = not publi
 That is the whole of "nobody sees your picks before the deadline". Episodes are
 seeded with a null date, so failing closed is not theoretical.
 
+**That line now appears twice.** `v_top_picks_public` carries the same clause
+against **episode 2**, because RULES §5 reveals everyone's top three at the start
+of episode 2 — which is episode 2's deadline. Anything reading `top_picks` goes
+through that view, `v_baker_stats.in_top_threes` included; reading the base table
+is how the count leaked before phase 6 fixed it.
+
 **2. Rules live on the server, never in the UI.**
 `api/player.js` recomputes lateness and the lock from the server clock on every
 request. The countdown, disabled buttons and LATE banner in `/play` are
@@ -84,7 +90,9 @@ api/
   _wordlists.js   code words + identity colours; splitCode/prettyCode
   _episodes.js    which episode is "this week", which categories apply.
                   Shared: two answers would put the panels on different weeks.
-  player.js       login · state · savePicks · confirm. Lateness + lock rules.
+  player.js       login · state · savePicks · saveTopPicks · confirm.
+                  Lateness + lock rules — and saveTopPicks runs the SAME ones
+                  against episode 2, via the same lockState call.
   gm.js           state · setCategory · setEpisode · goLive · toggleDisallow ·
                   unlockEntry · upsertPlayer · generateCode · upsertBaker.
                   Password every call.
@@ -113,6 +121,8 @@ src/
     PointsChart.jsx  hand-rolled SVG; three line states, table fallback
     ResultsGrid.jsx  this week, in three states that must not look alike
     PredictionWall.jsx  everyone's picks — empty until the deadline, by design
+    TopThreeBoard.jsx   everyone's three — empty until EPISODE 2's deadline,
+                        same reason, same shape
     SeriesRecap.jsx  every week so far, collapsed
   pages/          Dashboard · Play · Bakers · Rules · Gm
     gm/           one file per GM tab; Gm.jsx is only the shell
@@ -387,7 +397,8 @@ work with a dozen lines that cannot be told apart by hue:
 there is no honest week to attach a +3 to — the same reason `movementFor`
 carries them across rather than counting them as this week's news. The
 leaderboard total includes them and the chart says so when they are non-zero.
-It is theoretical until phase 6 puts top-three picks in.
+Live since phase 6 put the top three in, though it stays at zero until bakers
+are marked `finalist` after the semi-final.
 
 ### The leaderboard, and the reorder
 
@@ -424,11 +435,11 @@ says which of the two reasons applies rather than showing a blank.
 
 ### What phase 5 does not cover
 
-- **Top Three board.** Deferred to phase 6, and it is not merely a cost
-  question: `top_picks` is ungranted and **no granted view exposes who is in
-  whose three** — `v_series_bonus` carries points only, `v_baker_stats` a count
-  per baker. It needs a new view as well as the `saveTopPicks` API and UI.
-- **Stats strip** — phase 6, as planned.
+- **Top Three board.** ✅ Built in phase 6 — see that section below. It needed
+  the new `v_top_picks_public`, because `v_series_bonus` carries points only and
+  `v_baker_stats` a count per baker, so nothing granted said who was in whose
+  three.
+- **Stats strip** — phase 6, as planned. Still to do.
 - **The results grid names the winner rather than showing their face.** There
   are no photos, and `v_episode_results_public` carries `baker_name` and not
   `photo_url`.
@@ -520,26 +531,110 @@ value that framed all twelve heads without decapitating the full-length shots.
 
 - **`/rules`** — still the stub. No SQL, no endpoint; it is the short version of
   [RULES.md](RULES.md) plus open question #3 (the colophon wording).
-- **Top-three picks and the Top Three board** — the piece that needs SQL. See
-  the warning below before starting it.
 - **Stats strip** — most-picked baker of the week, best lone call, per-player
-  accuracy, biggest weekly haul. Mostly `v_baker_stats`, already granted.
+  accuracy, biggest weekly haul. Mostly `v_baker_stats`, already granted, and
+  the home for the prediction-derived baker stats `/bakers` deliberately drops.
 
-### ⚠️ Before you build top-three picks: `in_top_threes` has no lock gate
+---
 
-`rls.sql` says `top_picks` is ungranted because "picks are private until their
-lock time". But `v_baker_stats.in_top_threes` counts `top_picks` directly with
-**no `top_picks_lock_at` gate**, and that view *is* granted to anon. So once
-people start making top-three picks, anyone can read how many players have
-already backed each baker — before the reveal at the start of episode 2 that
-RULES §5 promises.
+## Phase 6: the top three
 
-It is harmless today because `top_picks` is empty, and `/bakers` deliberately
-does **not** render that stat. Fix it when the picks land, not before — either
-gate the subquery on `season_settings.top_picks_lock_at` the way
-`v_public_predictions` gates on `deadline_at`, or drop the column. Note that
-`create or replace view` may only append columns, so dropping it is a full drop
-and recreate with everything downstream; gating it in place is the cheap edit.
+✅ **Built and applied** — `views.sql`, `rls.sql` and `smoke_test.sql` were all
+re-pasted, and the smoke test passes.
+
+The picker sits on `/play` **below** the weekly predictions, as a once-per-series
+item; the board sits on the dashboard below the wall and above the recap.
+
+### One clock, derived, never stored
+
+The whole design turns on one decision. RULES §5 locks the top three at 18:00 on
+the Tuesday before episode 2 — **which is episode 2's own deadline, to the
+second.** So nothing stores that moment:
+
+- the **lock** is `lockState(episodeTwo, entryForEpisodeTwo, now)` in
+  `api/player.js` — the same function the weekly picks use, called with a
+  different episode;
+- the **reveal** is `v_top_picks_public`'s `where ep.deadline_at is not null and
+  ep.deadline_at <= now()` on episode 2 — the same fail-closed shape as
+  `v_public_predictions`.
+
+Both follow `air_date` through `schema.sql`'s trigger for free, and there is no
+way for the two ends to disagree about when the three lock.
+
+**`season_settings.top_picks_lock_at` is therefore dead**, and `schema.sql`
+carries a loud comment saying so. It was the stored version of that moment: a
+second date that could drift from the first, plus a GM control that was never
+built to keep them in step. Do not wire it back up.
+
+Consequences worth knowing:
+
+- **The window opens when episode 1 is marked complete** — "after you have seen
+  everyone bake once". If the GM never marks it complete, the picker never
+  opens, which is the one workflow dependency here.
+- **One door-opening covers both.** A VERY LATE player the GM unlocked for
+  episode 2 can save their three as well as their weekly picks, and both are
+  flagged late. It is one conversation with the GM, not two.
+- **Whenever the window is open, episode 2 IS the current episode** — the window
+  opens when episode 1 completes and shuts when episode 2 does, and `pickCurrent`
+  returns the lowest-numbered episode that is not complete. So the entry
+  `buildState` has already fetched is always the right one, and the picker needs
+  no second countdown: it says "Locks with this week's picks" instead, because
+  two clocks on one screen only invite the question of which one counts.
+
+### `in_top_threes` was leaking, and is fixed
+
+The warning that used to be in this section is resolved. `v_baker_stats` is
+granted to anon and its `in_top_threes` counted `top_picks` **directly, with no
+gate** — so from the moment picks opened, anyone could read "seven people are
+riding on Priya", which is exactly what RULES §5's episode-2 reveal exists to
+prevent. It now reads `v_top_picks_public`, so it inherits the gate.
+
+That was the same bug the view's own header comment already warns about for
+predictions ("Prediction-derived columns read `v_public_predictions`, NOT
+`predictions`") — `in_top_threes` was the one column breaking the rule. The
+smoke test now asserts both directions: no leak before episode 2's deadline, and
+that the gate genuinely opens afterwards. A gate welded shut would pass a
+leak test for entirely the wrong reason.
+
+### Details that were decided rather than fallen into
+
+- **Rank is a slot, not a preference.** RULES §5 says the three are in no
+  particular order and nothing scores them differently. `rank` exists so the
+  database can hold "exactly three" via `unique (player_id, rank)`.
+- **The picker is a set of toggles, not three selects.** Three dropdowns would
+  have implied an order that does not exist, and made "you cannot pick the same
+  person twice" a rule to explain rather than one the interface makes
+  impossible. At three chosen the rest disable rather than silently ignoring a
+  fourth tap.
+- **`saveTopPicks` replaces rather than upserts.** `top_picks` is unique on both
+  `(player_id, rank)` and `(player_id, baker_id)`, so swapping two of your three
+  row-by-row collides with a row the same edit is about to move. One request
+  states the whole answer, the same shape as `setCategory`.
+- **The board greys dead picks, never drops them.** You are stuck with your
+  three, and watching them go home is most of the point.
+- **`lockState`'s wording is translated.** It speaks about episodes, because
+  that is its job; "That episode is over" said to someone looking at a
+  series-long commitment is a non-sequitur. `topThreeLockReason` says it in
+  terms of the thing on screen. Same rule, same clock, different sentence.
+- **The GM cannot disallow a top pick.** `is_disallowed` exists and the scoring
+  views filter on it, but nothing sets it and no UI offers it — Elena's call.
+
+### How it was tested
+
+`smoke_test.sql` covers the SQL gate. The API was exercised by a throwaway-season
+harness in a scratch directory (the technique below), **35 checks**, all passing
+against the live database: the full ladder — shut before episode 1 completes, on
+time, LATE past the deadline, shut once episode 2 airs, VERY LATE with the GM's
+door open, and shut for good once episode 2 completes — plus rejection of two,
+four, duplicate, non-UUID, eliminated and other-season bakers. The season was
+deleted afterwards and the deletion verified.
+
+Two throwaway leagues were also built to look at the UI with real-shaped data:
+one parked mid-series for the dashboard, one parked at the picking moment for
+`/play`. Both hang off their own seasons, so the real league was never touched.
+**Delete them before the series starts** if they are still there:
+`DEMO — dashboard preview` and `DEMO — picking`, one `delete from seasons`
+each — everything cascades.
 
 ---
 
