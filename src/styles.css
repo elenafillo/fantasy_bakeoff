@@ -892,6 +892,56 @@ textarea.input { resize: vertical; line-height: 1.4; }
 .th-locked { margin: .6rem 0 0; padding-left: 1.15rem; font-weight: 800; }
 .th-locked li { margin: .2rem 0; }
 
+/* ---- /rules ---- */
+
+.rules-h { font-size: 1.1rem; margin: 1.3rem 0 .4rem; }
+.panel-body > .rules-h:first-child { margin-top: 0; }
+
+.rules-table { width: 100%; border-collapse: collapse; margin: .5rem 0; }
+.rules-table th, .rules-table td { text-align: left; padding: .45rem .3rem; vertical-align: top; }
+.rules-table tr + tr th, .rules-table tr + tr td { border-top: 2px solid var(--line); }
+.rules-table th { font-weight: 800; }
+.rules-table td { color: var(--ink-soft); }
+/* Tabular so the +4 / +3 / +2 column lines up as a column, not a ragged edge. */
+.rules-table .pts {
+  width: 3rem; text-align: right;
+  font-weight: 900; color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.rules-table .pts.cost { color: var(--live); }
+
+.rules-list { margin: .5rem 0; padding-left: 1.15rem; }
+.rules-list li { margin: .35rem 0; }
+
+.colophon {
+  margin: 1.4rem 0 0;
+  padding-top: 1rem;
+  border-top: 2px solid var(--line);
+  font-size: .8rem;
+  color: var(--ink-soft);
+}
+
+/* ---- The stats strip (dashboard) ---- */
+
+.stat-grid {
+  list-style: none; margin: 1rem 0 0; padding: 0;
+  display: grid; gap: .7rem;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+}
+.stat {
+  display: grid; gap: .1rem;
+  padding: .7rem .8rem;
+  border-radius: var(--radius-sm);
+  background: var(--pink-bg);
+}
+.stat-label {
+  font-size: .7rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .05em;
+  color: var(--ink-soft);
+}
+.stat-value { font-size: 1.25rem; line-height: 1.2; }
+.stat-detail { font-size: .8rem; color: var(--ink-soft); }
+
 /* ---- The top three board (dashboard) ---- */
 
 .th-board-head { font-size: 1.15rem; margin: 0 0 .2rem; }

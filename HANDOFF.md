@@ -32,7 +32,7 @@ late September 2026), so nothing is time-pressured yet.
 | **3 — GM panel** | ✅ **Done.** All five tabs. Live and Episodes have been used in a browser; Entries, Players and Bakers are checked against the live database but **not yet looked at** — see below. |
 | **4 — scoring wired into `/play`** | ✅ **Done.** SQL applied, smoke test passing, and seen in a browser with real results entered from the GM panel. |
 | **5 — dashboard** | ✅ **Done.** Chart, leaderboard, results grid, prediction wall and the series recap. No SQL changes. Looked at on a phone. |
-| 6 — `/bakers`, `/rules`, top-three picks, stats | 🟨 **`/bakers` and the top three built**, both applied to the live database. `/rules` and the stats strip still to do. |
+| 6 — `/bakers`, `/rules`, top-three picks, stats | ✅ **Done.** All four: `/bakers`, the top three (picker on `/play`, board on `/`), the stats strip and `/rules`. SQL applied and the smoke test passes. |
 | 7 — avatar builder, visual polish | ⬜ Not started, but **the spec and the art brief are written** — DESIGN §11, [ASSETS.md](ASSETS.md), `src/avatar/TEMPLATE.svg` |
 
 Live database state: league **In The Oven** (`in-the-oven`, default), 2 players,
@@ -109,6 +109,8 @@ src/
                   ONE thing the browser derives — the tick. Points never.
     dashboard.js  the dashboard's reads and league resolution — and a SECOND
                   copy of pickCurrent. Change one, change the other.
+    stats.js      the stats strip's five numbers. Counts rows SQL already
+                  decided; NO scoring rule lives here. Header says why.
     useCountdown.js
     useRefreshOnFocus.js   why /play has no poll (TECH_PLAN §8)
     usePopKey.js  restarts the score-change animation; scorecard + leaderboard
@@ -123,6 +125,7 @@ src/
     PredictionWall.jsx  everyone's picks — empty until the deadline, by design
     TopThreeBoard.jsx   everyone's three — empty until EPISODE 2's deadline,
                         same reason, same shape
+    StatsStrip.jsx   five things worth knowing; open by default
     SeriesRecap.jsx  every week so far, collapsed
   pages/          Dashboard · Play · Bakers · Rules · Gm
     gm/           one file per GM tab; Gm.jsx is only the shell
@@ -527,14 +530,6 @@ waist-up, so a centred circular crop frames the middle of an apron and pushes
 the face to the top edge — which defeats the one job this page has. 30% was the
 value that framed all twelve heads without decapitating the full-length shots.
 
-### What phase 6 still needs
-
-- **`/rules`** — still the stub. No SQL, no endpoint; it is the short version of
-  [RULES.md](RULES.md) plus open question #3 (the colophon wording).
-- **Stats strip** — most-picked baker of the week, best lone call, per-player
-  accuracy, biggest weekly haul. Mostly `v_baker_stats`, already granted, and
-  the home for the prediction-derived baker stats `/bakers` deliberately drops.
-
 ---
 
 ## Phase 6: the top three
@@ -635,6 +630,71 @@ one parked mid-series for the dashboard, one parked at the picking moment for
 **Delete them before the series starts** if they are still there:
 `DEMO — dashboard preview` and `DEMO — picking`, one `delete from seasons`
 each — everything cascades.
+
+---
+
+## Phase 6: the stats strip, and `/rules`
+
+✅ **Both built. Neither needed SQL, an endpoint, or a query of its own.**
+
+### The stats strip
+
+Five cards on the dashboard, above the recap:
+
+| | |
+|---|---|
+| The favourite | who the room is backing for Star Baker this week |
+| Written off | the most-predicted-to-leave baker who is still in |
+| Lone call | something exactly one person got right |
+| Biggest week | the best single episode anyone has had |
+| Sharpest eye | best hit rate across the series |
+
+**Bakers first, then players** — Elena's call, and it fixed a real problem: the
+two halves answer different questions ("what is the tent doing" and "who among
+us can read it"), and interleaved they read as five unrelated facts.
+
+**Open by default**, unlike the recap. TECH_PLAN §5 originally asked for it
+collapsed on a phone; it is still a `<details>` so it can be shut, but a stat
+nobody opens is a stat nobody has.
+
+**Nothing in `src/lib/stats.js` is a scoring rule**, and the file says so at the
+top. Every number is either counted from rows SQL already decided
+(`v_episode_scores`'s `points` and `correct_count`, `v_baker_stats`'s
+`picked_leaving`) or comes from `verdictFor` — the single derivation the browser
+is allowed, shared with the scorecard and the wall. If a stat ever needs to know
+what a category is worth or when a penalty fires, it belongs in `views.sql`.
+
+**Every card returns null when it has nothing to say**, and the strip renders
+only what came back — so before the first result the whole panel stays away
+rather than showing five dashes. Two thresholds are deliberate rather than
+incidental: a "favourite" everyone picked differently is not a favourite (needs
+two votes), and a hit rate needs a full episode's worth of picks before a
+percentage stops being noise.
+
+`picked_leaving` was added to `fetchReference`, not the poll — it can only
+change when a deadline passes, which is weekly, and `v_baker_stats` is twelve
+correlated subqueries.
+
+### `/rules`
+
+The scannable version of [RULES.md](RULES.md): the points, the penalty, the
+deadline ladder, the top three, the weeks that don't behave, the final and fair
+play. Static — no fetch, no endpoint, no login, so it works with no network.
+
+**RULES.md remains the long form and the record of decisions.** If the two
+disagree, RULES.md is right and the page is stale.
+
+**The points are duplicated from the `categories` table, not read from it.**
+That table is config — changing what Star Baker is worth is a row update — so
+this page would not follow. Accepted to keep the page network-free; the numbers
+have not moved since RULES §2.1, and `v_categories_public` is already granted if
+it ever needs to become a fetch.
+
+**The colophon says "unofficial", and that word is load-bearing.** The site it
+credits states it is not affiliated with the programme, Channel 4 or Love
+Productions — so "official" would be wrong twice over. Earlier drafts of
+TECH_PLAN §5 said official; they were wrong, and are now corrected. The wording
+and the link are Elena's, because it credits somebody else's game.
 
 ---
 

@@ -9,6 +9,8 @@ import { ResultsGrid } from '../components/ResultsGrid.jsx'
 import { PredictionWall } from '../components/PredictionWall.jsx'
 import { SeriesRecap } from '../components/SeriesRecap.jsx'
 import { TopThreeBoard } from '../components/TopThreeBoard.jsx'
+import { StatsStrip } from '../components/StatsStrip.jsx'
+import { buildStats } from '../lib/stats.js'
 import { Link } from '../lib/Link.jsx'
 
 /**
@@ -126,6 +128,22 @@ export default function Dashboard({ slug }) {
     [live]
   )
 
+  const stats = useMemo(
+    () =>
+      live && reference
+        ? buildStats({
+            predictions: live.predictions,
+            results: live.results,
+            scores: live.scores,
+            standings: live.standings,
+            bakerNames: reference.bakerNames,
+            bakers: reference.bakers,
+            episode: live.currentEpisode,
+          })
+        : [],
+    [live, reference]
+  )
+
   if (error) {
     return (
       <Panel head="The table">
@@ -237,6 +255,11 @@ export default function Dashboard({ slug }) {
         standings={live.standings}
         episodeTwo={live.episodes.find((e) => e.number === 2) ?? null}
       />
+
+      {/* Above the recap: these are facts about the season so far, and the
+          recap is the season so far. Both collapsed, both the least live
+          things here. */}
+      <StatsStrip stats={stats} />
 
       <SeriesRecap
         episodes={live.episodes}

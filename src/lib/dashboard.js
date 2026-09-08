@@ -129,13 +129,18 @@ export async function fetchReference(league) {
       order: 'sort_order.asc',
     }),
     supabase.query('v_baker_stats', {
-      select: 'baker_id,name,status,eliminated_episode',
+      // picked_leaving feeds the stats strip's "written off, still here". It
+      // sits in the once-only fetch rather than the poll because it can only
+      // change when a deadline passes — a weekly event, not a live one — and
+      // v_baker_stats is twelve correlated subqueries.
+      select: 'baker_id,name,status,eliminated_episode,picked_leaving',
       params: { season_id: `eq.${league.season_id}` },
     }),
   ])
 
   return {
     categories,
+    bakers,
     bakerNames: Object.fromEntries(bakers.map((b) => [b.baker_id, b.name])),
   }
 }

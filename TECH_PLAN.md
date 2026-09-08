@@ -314,10 +314,20 @@ people will be watching on the sofa with their phone in hand, so this is
   `v_top_picks_public`, added for it, since `v_series_bonus` carries points only
   and `v_baker_stats` a count per baker. Empty until episode 2's deadline, and
   it says which of the two reasons applies rather than showing a blank.
-- **Stats strip** — most-picked baker of the week, best lone call (something only
-  one person got right), per-player accuracy by category, the
-  most-predicted-to-leave baker who keeps surviving, biggest weekly haul. This
-  is where the **league-flavoured baker stats** live — `picked_best`,
+- **Stats strip** — ✅ built in phase 6. Five cards, **bakers first then
+  players**: the week's favourite for Star Baker, the most-written-off baker
+  still in the tent, the lone call (something exactly one person got right), the
+  biggest single week, and the best hit rate. The two halves answer different
+  questions — what the tent is doing, and who among us can read it — and mixing
+  them made the strip read as five unrelated facts. **Open by default**, unlike
+  the recap: a stat nobody opens is a stat nobody has.
+
+  No queries of its own — every number comes from data the dashboard has already
+  fetched, and `src/lib/stats.js` either counts rows SQL already decided or uses
+  `verdictFor`, the one derivation the browser is allowed. **Cards with nothing
+  to say are not rendered**, so before the first result the panel stays away.
+
+  This is where the **league-flavoured baker stats** live — `picked_best`,
   `picked_leaving` and `in_top_threes` off `v_baker_stats`. They were tried on
   `/bakers` first and moved here: how the league has voted is a fact about the
   players, not about the baker. Note they count across **every league playing
@@ -349,13 +359,27 @@ was already granted.
 
 ### `/rules`
 
-The short version of [RULES.md](RULES.md) — the points table, the deadline, the
-penalty, the top three, and the weird-weeks note. Not the full document; the
-scannable version people will actually read on a phone before picking.
+✅ **Built in phase 6.** The short version of [RULES.md](RULES.md) — the points
+table, the deadline, the penalty, the top three, the weird-weeks note and the
+final. Not the full document: the scannable version someone opens on a phone two
+minutes before the deadline to settle an argument. Static — no fetch, no
+endpoint, no login.
 
-At the bottom, a short colophon: that you built this with Claude, and that the
-game is based on the official Fantasy Bake Off. *(Send me the exact wording and
-the link you want to point at — I don't want to guess at the attribution.)*
+**RULES.md stays the long form and the record of decisions.** If the two ever
+disagree, RULES.md is right and the page is stale.
+
+One trade worth knowing: the points are **duplicated** from the `categories`
+table rather than read from it. That table is config — changing what Star Baker
+is worth is a row update — and this page would not follow. It is worth it to
+keep `/rules` readable with no network at all, and the numbers have not moved
+since RULES §2.1 was written. If they ever do, `v_categories_public` is already
+granted and this becomes a five-line fetch.
+
+The colophon at the bottom is Elena's wording, and the attribution half is hers
+on purpose — it credits somebody else's game. Note it says **unofficial**: that
+site states it is not affiliated with the programme, Channel 4 or Love
+Productions, so "official" would be wrong twice over. Earlier drafts of this
+document said official; they were wrong.
 
 ### The GM panel (`/gm`)
 
@@ -596,7 +620,7 @@ before we're finished.
 | **3** | ✅ `/gm` — all five tabs: Live, Episodes, Entries, Players, Bakers. | scoring |
 | **4** | ✅ Scoring wired up; the scorecard and standings on `/play`. Adds `v_episode_results_public` — **paste `views.sql` and `rls.sql` again** | 5 |
 | **5** | ✅ `/` dashboard — chart, leaderboard, results grid, prediction wall, and the series recap from §5. **No SQL**: every view it needs was already granted, so there is nothing to paste. | showable |
-| **6** | 🟨 `/bakers` ✅ and top-three picks ✅ (picker on `/play`, board on `/`). The top three adds `v_top_picks_public` and gates `v_baker_stats.in_top_threes` — **paste `views.sql`, `rls.sql` and `smoke_test.sql` again**. Still to do: `/rules`, stats strip | — |
+| **6** | ✅ `/bakers`, top-three picks and series bonuses (picker on `/play`, board on `/`), the stats strip, and `/rules`. The top three adds `v_top_picks_public` and gates `v_baker_stats.in_top_threes` — **paste `views.sql`, `rls.sql` and `smoke_test.sql` again**; nothing else in the phase needed SQL | — |
 | **7** | Avatar builder with your friend's SVGs; visual design pass | — |
 
 **Minimum to run week 1: phases 0–4.** The dashboard can arrive in week 2 without
@@ -644,7 +668,7 @@ Vercel hobby. A custom domain, if you ever want one, is ~£10/year — otherwise
 |---|----------|
 | 1 | **Series start date** — ten episodes confirmed; the date isn't announced yet, expected late September 2026. Episodes are seeded with numbers and a null `air_date`; dates fill in when announced and the deadline follows automatically. |
 | 2 | ✅ **The cast** — announced and applied. [supabase/cast_2026.sql](supabase/cast_2026.sql) renamed the twelve placeholders in place, so their ids survived along with the test picks made against them. Photos are **hotlinked** from the broadcaster; `photo_url` is nullable and `/bakers` falls back to a monogram, so a dead link degrades rather than breaks. **Left over:** the phase 3/4 test results are now attached to real names — Gabe reads as eliminated in episode 1, Gary as a Star Baker — and want clearing before the link goes round. |
-| 3 | **Exact colophon wording** for `/rules`, and the link for "the official Fantasy Bake Off" |
+| 3 | ✅ **Colophon** — settled and shipped: *"This game is a home-made version of the unofficial [Fantasy Bake Off](https://fantasybakeoff.co.uk/). Built with Claude."* **Unofficial**, not official: that site states it is not affiliated with the programme, Channel 4 or Love Productions. |
 | 4 | **How many players?** Sets the identity-palette size — 16 hues is comfortable, beyond ~20 they stop being tellable apart even beside a name. |
 | 5 | A display face for headings (DESIGN.md §9) — must be freely licensable |
 
