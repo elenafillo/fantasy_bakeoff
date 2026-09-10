@@ -110,7 +110,7 @@ function Login({ onIn, error }) {
 function Entry({ state, code, setState, onOut }) {
   const {
     player, league, episode, categories, bakers, bakerNames,
-    entry, editable, lockReason, wouldBe, standings, topThree,
+    entry, editable, lockReason, wouldBe, standings, topThree, guesses,
   } = state
 
   // Picks are local until saved, so changing your mind is free and the server
@@ -201,7 +201,7 @@ function Entry({ state, code, setState, onOut }) {
     setFlash(null)
     try {
       setState(await playerPost(action, code, { episodeId: episode.id, ...extra }))
-      if (action === 'savePicks') setFlash('Saved')
+      if (action === 'savePicks') setFlash(extra?.guesses ? 'Your guesses are in' : 'Saved')
       if (action === 'saveTopPicks') setFlash('Your top three is in')
       // A save can change the score, not just the picks: a VERY LATE entry the
       // GM opened the door for is submitted with results already in. Cheap to
@@ -351,9 +351,21 @@ function Entry({ state, code, setState, onOut }) {
         )}
       </Panel>
 
-      {/* After the weekly picks, because that is the order of importance every
-          week except one: this is a once-per-series item and the panel above is
-          the reason people opened the page. */}
+      {/* Both once-per-series items sit below the weekly picks, which are the
+          reason people opened the page. The guesses come first of the two
+          because they shut first — they lock with episode 1, where the top
+          three does not even open until episode 1 is done, so the two are never
+          both live on the same visit. */}
+      <BakeGuess
+        guesses={guesses}
+        busy={busy}
+        /* Sent WITH the week's picks, not on their own. savePicks stamps the
+           entry's lateness from the server clock on every call, so a request
+           carrying only guesses would mark this week's picks late for an edit
+           that was not about them. One request, one submission, one stamp. */
+        onSave={(typed) => send('savePicks', { picks, guesses: typed })}
+      />
+
       <TopThree
         topThree={topThree}
         bakers={bakers}
@@ -362,6 +374,140 @@ function Entry({ state, code, setState, onOut }) {
         onSave={(bakerIds) => send('saveTopPicks', { bakerIds })}
       />
     </>
+  )
+}
+
+// ------------------------------------------------------------
+// The bake guess — RULES §6
+// ------------------------------------------------------------
+/**
+ * Two bakes, named once, before episode 1 has aired.
+ *
+ * The mirror image of the top three: that one opens after episode 1 because it
+ * needs you to have watched everyone bake, and this one shuts before episode 1
+ * because it needs you to have watched nothing. A teaser can only spoil the
+ * next episode, so a commitment made before any of them cannot be spoiled at
+ * all.
+ *
+ * Everything here is presentation. The window, the lateness ladder and the lock
+ * are episode 1's, computed in api/player.js by the same `lockState` the weekly
+ * picks use — `guesses.editable` only decides whether this is a form or a
+ * receipt, and the server decides again on save.
+ */
+function BakeGuess({ guesses, busy, onSave }) {
+  const [typed, setTyped] = useState(() => guesses.slots.map((g) => g.text))
+
+  // Re-sync on a fresh server state, the same way the weekly picks and the top
+  // three do.
+  const [seen, setSeen] = useState(guesses.slots)
+  if (seen !== guesses.slots) {
+    setSeen(guesses.slots)
+    setTyped(guesses.slots.map((g) => g.text))
+  }
+
+  // No episode 1, so no season worth speaking of. Nothing to say at all.
+  if (!guesses.open) return null
+
+  const same = typed.every((t, i) => t.trim() === guesses.slots[i].text)
+  const anything = typed.some((t) => t.trim() !== '')
+
+  return (
+    <Panel head="The bake guess">
+      <h2 className="th-head">Two bakes, for the whole series</h2>
+      <p className="small muted">
+        Name two things you think will come up — a bake, an ingredient, a
+        technique. <strong>+5</strong> if you were the only one who said it,{' '}
+        <strong>+2</strong> if exactly two of you did, nothing if three or more
+        did. It pays the week it appears, once.
+      </p>
+
+      {!guesses.editable ? (
+        <>
+          <p className="notice">{guesses.reason ?? 'Locked in.'}</p>
+          {guesses.slots.some((g) => g.text) ? (
+            <ul className="guess-receipt">
+              {guesses.slots.filter((g) => g.text).map((g) => (
+                <li key={g.slot} className={g.isDisallowed ? 'struck' : ''}>
+                  <span className="guess-word">{g.text}</span>
+                  {g.unifiedTo && (
+                    <span className="small muted"> · counted as “{g.unifiedTo}”</span>
+                  )}
+                  <span className="guess-outcome small">
+                    {g.isDisallowed
+                      ? 'Struck out by the GM'
+                      : g.hitEpisode == null
+                        ? 'Still to come up'
+                        : g.points > 0
+                          ? `Came up in episode ${g.hitEpisode} · +${g.points}`
+                          /* It came up and paid nothing, which only happens one
+                             way: too many people said it. Worth saying, because
+                             otherwise a hit that scored zero reads as a bug. */
+                          : `Came up in episode ${g.hitEpisode} · too many of you said it`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="small muted">
+              You didn&rsquo;t make a guess, so there are no bake points to come.
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          {guesses.wouldBe !== 'on_time' && (
+            <p className="notice">
+              {guesses.wouldBe === 'late'
+                ? 'The deadline has passed — this will be marked LATE.'
+                : 'Episode 1 has started. The GM opened this for you, so it will be marked VERY LATE.'}
+            </p>
+          )}
+
+          <div className="pickers">
+            {guesses.slots.map((g, i) => (
+              <label key={g.slot} className="picker">
+                <span className="picker-label">Guess {g.slot}</span>
+                <input
+                  className="input"
+                  value={typed[i]}
+                  maxLength={guesses.maxLength}
+                  disabled={busy}
+                  placeholder={i === 0 ? 'madeleine' : 'croquembouche'}
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck="false"
+                  onChange={(e) => {
+                    const next = [...typed]
+                    next[i] = e.target.value
+                    setTyped(next)
+                  }}
+                />
+              </label>
+            ))}
+          </div>
+
+          <p className="small muted">
+            {/* The same clock as the panel above — the guesses lock with
+                episode 1's picks, and the window is only ever open while
+                episode 1 is the current one. A second countdown here would
+                only invite the question of which one counts. */}
+            Locks with episode 1&rsquo;s picks, and <strong>no changes after
+            that</strong> — everyone&rsquo;s guesses go public at the same
+            moment.
+          </p>
+
+          <div className="actions">
+            <button
+              className="btn"
+              disabled={busy || same || !anything}
+              onClick={() => onSave(typed)}
+            >
+              {same && anything ? 'Saved' : 'Save my guesses'}
+            </button>
+          </div>
+        </>
+      )}
+    </Panel>
   )
 }
 

@@ -3,6 +3,11 @@
 // ============================================================
 // Actions: login · state · savePicks · saveTopPicks · confirm
 //
+// savePicks carries THREE things, not one: the week's predictions, and — while
+// episode 1 is still open — the two bake guesses. They travel together so that
+// there is one set of lateness and lock rules rather than two that can drift
+// (RULES §6).
+//
 // Every call carries the player's two-word code and every call re-verifies it.
 // There is no session and no token: the code IS the credential, so a request
 // without a valid one gets nothing. That also means no session can go stale
@@ -19,6 +24,7 @@
 import { rest, restInsert, restPatch, restDelete, jsonBody, isUuid } from './_supabase.js'
 import { normaliseCode } from './_codes.js'
 import { currentEpisode, categoriesFor } from './_episodes.js'
+import { normaliseGuess, GUESS_MAX, GUESS_SLOTS } from './_guesses.js'
 
 // The statuses a player can still be picked in. 'finalist' and 'winner' stay
 // pickable, which is what makes the final's card work. Written once because
@@ -38,6 +44,18 @@ const PICKABLE = ['active', 'finalist', 'winner']
 // is now dead — see the warning on it in schema.sql.
 const TOP_PICKS_EPISODE = 2
 const TOP_PICKS_COUNT = 3
+
+// The bake guess rides on episode 1 the way the top three rides on episode 2,
+// and for the opposite reason: the top three needs you to have watched everyone
+// bake once, and this needs you to have watched nothing at all. A teaser can
+// only spoil the next episode, so a commitment made before any of them is
+// structurally unspoilable (RULES §6, TECH_PLAN §14).
+//
+// It therefore locks on episode 1's ordinary ladder — the same lockState call
+// the weekly picks make, with the same door — and it is saved through savePicks
+// rather than through an action of its own, so there is exactly one set of
+// lateness rules to keep in step.
+const GUESS_EPISODE = 1
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only.' })
@@ -221,6 +239,110 @@ function topThreeLockReason(epTwo, now) {
 }
 
 // ------------------------------------------------------------
+// The bake guess — RULES §6
+// ------------------------------------------------------------
+/**
+ * Everything the panel needs about the two bakes, resolved against episode 1.
+ *
+ * The window runs from the start of the season to episode 1's lock, which is
+ * the ordinary lateness ladder and nothing new: on time, LATE after the
+ * deadline, VERY LATE only if the GM opened that player's episode-1 door, and
+ * shut otherwise. One door-opening covers a player's episode-1 picks and their
+ * guesses together, exactly as one covers episode 2's picks and the top three.
+ *
+ * Whenever the window is open, episode 1 IS the current episode — `pickCurrent`
+ * returns the lowest-numbered episode that is not complete — so the entry
+ * buildState has already fetched is the right one, and nothing here needs a
+ * second round trip for it.
+ *
+ * `guesses` is the player's OWN pair and comes back whatever the clock says:
+ * this endpoint is authenticated by the code, and you may always see your own.
+ * Everybody else's stays behind v_series_guesses_public until episode 1 airs.
+ *
+ * The HIT half is read from that public view rather than from v_guess_scores,
+ * even for the player's own rows. A hit can only exist after episode 1's
+ * deadline has passed — the same moment that view opens — so the gate costs
+ * nothing here, and it means /play and the dashboard cannot end up telling two
+ * different stories about the same guess.
+ */
+async function guessState(player, seasonId, currentEp, currentEntry, now) {
+  const [episodes, mine, scored] = await Promise.all([
+    rest(
+      'episodes',
+      `select=id,number,status,deadline_at,live_at&season_id=eq.${seasonId}` +
+        `&number=eq.${GUESS_EPISODE}&limit=1`
+    ),
+    rest(
+      'series_guesses',
+      `select=slot,guess_text,guess_key,is_late,is_disallowed,submitted_at` +
+        `&player_id=eq.${player.id}&order=slot.asc`
+    ),
+    rest(
+      'v_series_guesses_public',
+      `select=slot,hit_episode_number,points&player_id=eq.${player.id}`
+    ),
+  ])
+
+  const epOne = episodes[0] ?? null
+  const hits = new Map(scored.map((r) => [r.slot, r]))
+
+  const slots = []
+  for (let slot = 1; slot <= GUESS_SLOTS; slot += 1) {
+    const row = mine.find((g) => g.slot === slot) ?? null
+    const hit = hits.get(slot) ?? null
+    slots.push({
+      slot,
+      text: row?.guess_text ?? '',
+      // Only when the GM has actually unified it into something else. Sending
+      // it always would put a second, near-identical word beside every guess on
+      // the panel for no reason; sending it when it differs is the audit trail
+      // that makes the edit fair (TECH_PLAN §14).
+      unifiedTo: row && row.guess_key !== normaliseGuess(row.guess_text) ? row.guess_key : null,
+      isLate: row?.is_late ?? false,
+      isDisallowed: row?.is_disallowed ?? false,
+      // Null until it comes up. A hit implies its episode has aired, so this is
+      // also the flag for "there is anything to say about this guess yet".
+      hitEpisode: hit?.hit_episode_number ?? null,
+      points: hit?.hit_episode_number != null ? hit.points : null,
+    })
+  }
+
+  const base = {
+    slots,
+    count: GUESS_SLOTS,
+    maxLength: GUESS_MAX,
+    deadlineAt: epOne?.deadline_at ?? null,
+    submittedAt: mine[0]?.submitted_at ?? null,
+  }
+
+  // No episode 1 means no season worth speaking of. Nothing to say, and the
+  // panel hides the section rather than explaining an empty database.
+  if (!epOne) return { ...base, open: false, editable: false, reason: null, wouldBe: null }
+
+  const entry = currentEp?.id === epOne.id ? currentEntry : null
+  const lock = lockState(epOne, entry, now)
+
+  return {
+    ...base,
+    open: true,
+    editable: !lock.locked,
+    // lockState speaks about episodes, because that is its job. "That episode
+    // is over" said to somebody looking at a once-per-series commitment is a
+    // non-sequitur — same rule, same clock, told in terms of what is on screen.
+    reason: lock.locked ? guessLockReason(epOne, now) : null,
+    wouldBe: lock.lateness ?? null,
+  }
+}
+
+function guessLockReason(epOne, now) {
+  const live = epOne.live_at ? new Date(epOne.live_at) : null
+  if (epOne.status !== 'complete' && live && now >= live) {
+    return 'Episode 1 has started, so the guesses are closed. Ask the GM to open it for you.'
+  }
+  return 'Your bake guesses are locked in for the rest of the series.'
+}
+
+// ------------------------------------------------------------
 // State
 // ------------------------------------------------------------
 
@@ -271,7 +393,10 @@ async function buildState(player) {
   const now = new Date()
   const lock = episode ? lockState(episode, entry, now) : { locked: true, reason: 'No episodes yet.' }
 
-  const topThree = await topThreeState(player, seasonId, episode, entry, now)
+  const [topThree, guesses] = await Promise.all([
+    topThreeState(player, seasonId, episode, entry, now),
+    guessState(player, seasonId, episode, entry, now),
+  ])
 
   return {
     player: {
@@ -300,6 +425,7 @@ async function buildState(player) {
     // player commits rather than after.
     wouldBe: lock.lateness ?? null,
     topThree,
+    guesses,
     standings: standings[0] ?? null,
     serverNow: now.toISOString(),
   }
@@ -310,7 +436,7 @@ async function buildState(player) {
 // ------------------------------------------------------------
 
 async function savePicks(res, player, body) {
-  const { episodeId, picks } = body
+  const { episodeId, picks, guesses } = body
   if (!isUuid(episodeId) || typeof picks !== 'object' || picks === null) {
     return res.status(400).json({ error: 'episodeId and picks are required.' })
   }
@@ -367,6 +493,22 @@ async function savePicks(res, player, body) {
     toSet.push({ category, baker_id: bakerId })
   }
 
+  // The guesses ride along on this request rather than having a save of their
+  // own, so they inherit `lock` above — episode 1's ladder, computed once. All
+  // of this is validated BEFORE anything is written, so a rejected guess does
+  // not leave the week's picks half-saved.
+  let guessRows = null
+  if (guesses !== undefined) {
+    if (episode.number !== GUESS_EPISODE) {
+      return res.status(403).json({
+        error: 'The bake guesses closed when episode 1 started. They are in for the series.',
+      })
+    }
+    const prepared = await prepareGuesses(player, guesses, lock, now)
+    if (prepared.error) return res.status(prepared.status).json({ error: prepared.error })
+    guessRows = prepared.rows
+  }
+
   // ---- write ----
 
   const [saved] = await restInsert(
@@ -395,7 +537,90 @@ async function savePicks(res, player, body) {
     await restDelete('predictions', `entry_id=eq.${saved.id}&category=in.(${list})`)
   }
 
+  if (guessRows) {
+    // Replace rather than upsert, for the reason saveTopPicks does: the table
+    // is unique on (player_id, slot) AND on (player_id, guess_key), so moving a
+    // guess from one slot to the other collides with a row this same edit is
+    // about to move. Clearing first means the pair lands as one answer.
+    await restDelete('series_guesses', `player_id=eq.${player.id}`)
+    if (guessRows.length) await restInsert('series_guesses', guessRows)
+  }
+
   return res.status(200).json(await buildState(player))
+}
+
+/**
+ * Turn what the player typed into rows, or into a sentence saying why not.
+ *
+ * Two things are carried forward from whatever is already stored, and both
+ * matter only in the narrow case where the GM has opened a door after the lock:
+ *
+ *   * `guess_key`, when the TEXT has not changed. Re-deriving it would wipe the
+ *     GM's unification — the whole point of which is that it is deliberate and
+ *     scoring-relevant — on a save that changed nothing.
+ *   * `is_disallowed`, for a guess that survives the edit. Otherwise re-saving
+ *     would quietly undo the GM's only switch for a VERY LATE guess.
+ */
+async function prepareGuesses(player, guesses, lock, now) {
+  if (!Array.isArray(guesses) || guesses.length !== GUESS_SLOTS) {
+    return { status: 400, error: `Send both guesses — ${GUESS_SLOTS} of them, blank ones included.` }
+  }
+  if (!guesses.every((g) => g === null || typeof g === 'string')) {
+    return { status: 400, error: 'A guess is a bit of text.' }
+  }
+
+  const existing = await rest(
+    'series_guesses',
+    `select=slot,guess_text,guess_key,is_disallowed&player_id=eq.${player.id}`
+  )
+
+  const rows = []
+  const seen = new Set()
+
+  for (let i = 0; i < GUESS_SLOTS; i += 1) {
+    const text = String(guesses[i] ?? '').replace(/\s+/g, ' ').trim()
+    if (text === '') continue
+
+    if (text.length > GUESS_MAX) {
+      return { status: 400, error: `Keep a guess under ${GUESS_MAX} characters — it has to fit on a board.` }
+    }
+
+    const derived = normaliseGuess(text)
+    // Something with no letters or digits in it, or a single stray character.
+    // Not a rule about what a good guess is — that is RULES §6 and the GM's
+    // call before the lock — just a floor under what counts as an answer.
+    if (derived.length < 2) {
+      return { status: 400, error: `"${text}" isn't a bake. Try a name, an ingredient or a technique.` }
+    }
+
+    const was = existing.find((g) => g.slot === i + 1) ?? null
+    const unchanged = was && was.guess_text === text
+    const key = unchanged ? was.guess_key : derived
+
+    // Checked against the key that will actually be WRITTEN, not the one this
+    // text derives to. If the GM has already unified one of the pair, those two
+    // are different strings, and comparing the derived forms would let a
+    // genuine collision through to the unique constraint as a 500.
+    if (seen.has(key)) {
+      return { status: 400, error: 'Two different guesses, please — that is the same one twice.' }
+    }
+    seen.add(key)
+
+    rows.push({
+      player_id: player.id,
+      slot: i + 1,
+      guess_text: text,
+      guess_key: key,
+      submitted_at: now.toISOString(),
+      // Recomputed on every save, exactly like an entry's lateness: editing a
+      // guess after the deadline IS a late submission, even if the first
+      // version was in on time.
+      is_late: lock.lateness !== 'on_time',
+      is_disallowed: unchanged ? was.is_disallowed : false,
+    })
+  }
+
+  return { rows }
 }
 
 // ------------------------------------------------------------

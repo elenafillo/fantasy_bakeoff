@@ -461,6 +461,18 @@ a { color: inherit; }
    its status pill, which carries the word and the episode. */
 .roster-row.gone strong { color: var(--ink-soft); }
 
+/* A league's name over its slice of the roster, on the two GM tabs that are
+   about a league rather than about the season. Drawn ONLY when more than one
+   league is in view — with a single league it would be naming something there
+   is no alternative to. */
+.roster-section + .roster-section { margin-top: 1.6rem; }
+.roster-group {
+  margin: 0;
+  font-weight: 800; font-size: .82rem;
+  letter-spacing: .04em; text-transform: uppercase;
+}
+.roster-group + .roster { margin-top: .5rem; }
+
 .picks-list { list-style: none; margin: 0; padding: 0; font-size: .875rem; }
 .picks-list li { display: flex; gap: .4rem; justify-content: space-between; }
 .picks-list .muted { text-transform: uppercase; font-size: .72rem; font-weight: 800; letter-spacing: .04em; }
@@ -920,6 +932,14 @@ textarea.input { resize: vertical; line-height: 1.4; }
   font-size: .8rem;
   color: var(--ink-soft);
 }
+/* The rule above it separates it from whatever it follows. Alone in its own
+   panel there is nothing to separate it from, so the border would be a line
+   drawn over empty space — same reasoning as .rules-h:first-child below. */
+.panel-body > .colophon:only-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
 
 /* ---- The stats strip (dashboard) ---- */
 
@@ -967,6 +987,66 @@ textarea.input { resize: vertical; line-height: 1.4; }
   color: var(--ink-soft);
   text-decoration: line-through;
 }
+
+/* ---- The bake guess (/play, /gm and the dashboard) ---- */
+
+/* The receipt on /play, once episode 1 has locked. A list rather than chips,
+   because each line carries an outcome sentence as well as the word. */
+.guess-receipt { list-style: none; margin: .6rem 0 0; padding: 0; display: grid; gap: .5rem; }
+.guess-receipt li { display: grid; gap: .05rem; }
+.guess-word { font-weight: 800; font-size: 1.05rem; }
+.guess-outcome { color: var(--ink-soft); }
+/* Struck out by the GM. Never colour alone — the line through and the words
+   "Struck out by the GM" both say it (DESIGN §5). */
+.guess-receipt li.struck .guess-word { color: var(--ink-soft); text-decoration: line-through; }
+
+/* The GM's Guesses tab. Holders sit under the canonical wording, each with what
+   the guess is worth to THEM — points are per league, so two people on one word
+   can honestly show different numbers. */
+.guess-holders { list-style: none; margin: .3rem 0; padding: 0; display: grid; gap: .5rem; }
+.guess-holder {
+  display: grid; gap: .15rem;
+  padding: .45rem .55rem;
+  border-radius: var(--radius-sm);
+  background: var(--pink-bg);
+}
+.guess-holder.struck { background: var(--card); box-shadow: 0 0 0 2px var(--line) inset; }
+.guess-holder.struck .guess-holder-name { color: var(--ink-soft); text-decoration: line-through; }
+.guess-holder-who { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; min-width: 0; }
+.guess-holder-name { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.guess-holder-pts {
+  margin-left: auto;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--btn);
+}
+.guess-holder-text { font-style: italic; }
+
+/* The dashboard board. Shares .th-board-* with the top three deliberately —
+   they are the same shape of thing (a once-per-series commitment, per player)
+   and reading them as one pair of panels is the point. Only the chip differs. */
+.guess-chip.waiting { background: var(--pink-bg); }
+/* It came up AND it paid. */
+.guess-chip.paid {
+  background: var(--icing);
+  color: var(--btn);
+  box-shadow: 0 0 0 2px var(--btn) inset;
+}
+/* It came up and paid nothing, because three or more people said it. This must
+   not look like `paid` and must not look like `waiting`: "everyone said cake"
+   is a different outcome from both, and it is the funniest thing on the board. */
+.guess-chip.flat {
+  background: var(--card);
+  box-shadow: 0 0 0 2px var(--line) inset;
+  color: var(--ink-soft);
+}
+.guess-chip.struck {
+  background: var(--card);
+  box-shadow: 0 0 0 2px var(--line) inset;
+  color: var(--ink-soft);
+  text-decoration: line-through;
+}
+.guess-chip-ep { font-variant-numeric: tabular-nums; opacity: .8; }
 
 /* ---- The cast grid (/bakers) ---- */
 

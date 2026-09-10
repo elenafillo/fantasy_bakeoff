@@ -42,8 +42,8 @@ The colour layer follows from it:
 | **Ground & tints** | page, icing bands, washes | Soft, low-chroma, large areas |
 | **Series hues** | chart lines, chips, dots — anything small that must be told apart | Saturated, small areas, validated |
 
-A player's avatar is a lightened variant of their series hue, computed in CSS —
-one stored value, two appearances (TECH_PLAN §7).
+A player's avatar *disc* is a lightened variant of their series hue, computed in
+CSS — one stored value, two appearances (TECH_PLAN §7, and §11 below).
 
 ---
 
@@ -55,7 +55,7 @@ one stored value, two appearances (TECH_PLAN §7).
 | Typefaces, sizes, spacing, radii | Data sitting on **white**, not on pink |
 | Scallop size, texture, decoration | Colour never being the *only* signal |
 | Accent and tint colours | `--live` and `--btn` staying reserved |
-| Avatar parts and shapes | |
+| Avatar parts, shapes and colours | The avatar **face box** (§11) |
 
 Re-running the check, after any change to the series hues **or to the surface
 they sit on**:
@@ -207,8 +207,10 @@ button's 3px edge.
 - **Candy button** — solid `--btn`, pill, white bold text, 3px `--btn-edge`
   underneath. Presses down 3px on `:active` and the edge collapses. That press is
   the whole 2010 feel, from two properties and no gradient.
-- **Avatar** — circular, 3px white ring, thin outer hairline. The ring is of the
-  era and genuinely useful: it lifts a soft colour off a soft ground.
+- **Avatar** — circular, 3px white ring, thin outer hairline. The disc behind the
+  treat is the player's colour, lightened; the art is clipped to it. The ring is
+  of the era and genuinely useful: it lifts a soft colour off a soft ground —
+  which is exactly why it stays white and the *disc* carries the hue. See §11.
 - **Pill** — status and flags. Always a dot *and* a word.
 - **Nav** — four short uppercase words, current one on white. Must fit one phone
   line without wrapping; that's what caps it at four.
@@ -266,11 +268,130 @@ for an hour, so it must never nag.
 
 ---
 
-## 11. Open
+## 11. The avatar builder
+
+Nat draws the parts; players assemble one. Shown once on first login and
+reachable from `/play` after that. It takes thirty seconds and it's the first
+thing anyone does in the app, so it should be fun.
+
+### The carousel
+
+One horizontal row per layer, the assembled avatar large above them, Save
+underneath.
+
+```
+              ┌──────────┐
+              │  120px   │   updates on every tap
+              └──────────┘
+   TREAT   ‹  🧁  🧁  🍩  🍰  🥐  🍪  ›
+   EYES    ‹  ◕◕  ˘˘  ^^  ⊙⊙  ›
+   MOUTH   ‹   ‿   ω   ▽   〜  ›
+
+        [ Surprise me ]     [ Save ]
+```
+
+- **Every chip renders the whole avatar in miniature**, not the bare part. You're
+  choosing an outcome, not a component — and a lone pair of eyes on a white chip
+  is unreadable anyway.
+- **A treat's colour variants are items in the treat row**, not a fourth row that
+  appears for some treats and not others. Variants of the same treat sit next to
+  each other; the order is otherwise free.
+- **Surprise me** solves the blank slate, and it's how first login seeds an
+  avatar so nobody ever has an empty one. It skips combinations already taken in
+  the league.
+- Scroll-snap, swipeable, arrows either side for pointer and keyboard, 44px
+  targets. Each row is a `radiogroup`, which gets arrow-key navigation and a
+  sane announcement for free.
+
+### Colour stays exactly where §2 put it
+
+The disc behind the treat is the player's identity hue, lightened. The treat
+keeps its own colours — a lemon tart is yellow, and that's the point of drawing
+it. The white ring stays white: its job (§8) is lifting a soft colour off a soft
+ground, which only means anything if the disc *is* the soft colour.
+
+The consequence is a real constraint on the art, not a note: **a treat has to
+read against sixteen different tints**, including one close to its own colour.
+That is what the dark outline is for, and it isn't optional.
+
+### The canvas
+
+One 48-unit square for every part, same origin, so the three layers stack with no
+alignment work. [src/avatar/TEMPLATE.svg](src/avatar/TEMPLATE.svg) draws all of
+this at scale — open it in a browser.
+
+| | |
+|---|---|
+| viewBox | `0 0 48 48` |
+| Safe circle | centre 24,24 · **r 21** — outside this the ring clips it |
+| Face box | 14,20 → 34,36 (20 wide × 16 tall) |
+| Eyes guide | the top half, y 20→28 |
+| Mouth guide | the bottom half, y 28→36 |
+
+Three rules follow from it:
+
+- **The face box must not move.** Everything else about a part is free taste;
+  move the box and every part drawn before it is wrong (§3).
+- **Nothing but eyes and mouths goes in the face box**, and the treat's body
+  fills it — flat, uncluttered, and pale enough for dark ink to read on.
+  Decoration goes above. The eyes/mouth bands inside it are guides rather than
+  walls, because a moustache legitimately rises into the eye band.
+- **Eyes and mouths are one ink colour**, `--ink` `#3d2b33`, so they work on
+  every treat.
+
+### Format
+
+SVG, flat fills, transparent, no gradients — §1's rule holds here too. No
+embedded rasters, no live text, no filters; run SVGO before committing. One file
+per part in `src/avatar/parts/`, named `<layer>-<name>.svg`, behind a
+`manifest.js` that carries the labels and groups variants.
+
+**Outlines at 1.5 units or heavier.** A hairline survives the 120px preview and
+vanishes in the leaderboard.
+
+### Sizes, and the one that bites
+
+24px in dense lists, 40px default, 120px in the builder. Vector, so one file
+serves all three.
+
+At **24px the treat is a silhouette** — outline and overall shape are the only
+things that survive. So the five treats need shapes that differ at a glance: a
+tall cupcake, a ring doughnut, a flat round biscuit, a triangular slice, a long
+eclair. Five variations on *round thing with icing* would be five identical
+avatars down the leaderboard, whatever the colours are doing.
+
+### Collisions
+
+The brief asks for five treats, four eye sets and four mouths as a **minimum**,
+with the colourways left to Nat — so the real count will be higher than the floor
+it's worth planning against. That floor: 5 treats plus a few second colourways is
+~8 bodies × 4 × 4 = **128 combinations**, and at 16 players that's a ~60% chance
+two people land on the same avatar.
+
+Don't fix that with more art — you'd need 500+ combinations to make it unlikely,
+and the odds barely move for anything Nat plausibly draws. Fix it in Surprise me
+and the first-login seed, by skipping what's already taken in the league. The
+disc tint tells them apart regardless; identical avatars just look careless.
+
+### Stored as config, not an image
+
+```json
+{ "body": "cupcake", "variant": "chocolate", "eyes": "sleepy", "mouth": "grin" }
+```
+
+`body` and `variant` stay separate even though the carousel flattens them, so a
+colour can be added mid-series without invalidating anyone's saved avatar
+(TECH_PLAN §7). Validated server-side against the manifest — a part name arriving
+from a browser is not to be trusted. `avatar_config` is already carried by both
+public views, so none of this needs SQL.
+
+---
+
+## 12. Open
 
 - Display face for headings (§9)
 - Identity palette for ~16 players, once we know the count (§3)
 - Paper grain overlay (§7)
-- Avatar part inventory — for your friend: same viewBox, same origin, body fill
-  as `currentColor`
+- Art from Nat — the brief is [ASSETS.md](ASSETS.md); this section is the spec
+  behind it
 - Print stylesheet for the final standings

@@ -108,6 +108,10 @@ where ep.deadline_at is not null
 -- Like every other scoring view it holds rows for EVERY league playing the
 -- season — seasons are shared by design — so callers filter by the player ids
 -- from v_standings. Dropping that filter puts a stranger's three on the board.
+--
+-- THERE IS A THIRD GATE OF THIS SHAPE, further down: v_series_guesses_public,
+-- on EPISODE 1's deadline. Three secrets, three views, three episodes — and
+-- each one fails closed on a null date.
 
 create or replace view v_top_picks_public as
 select
@@ -212,12 +216,155 @@ where en.is_disallowed is false
   );
 
 -- ------------------------------------------------------------
+-- The bake guess — scoring
+-- ------------------------------------------------------------
+-- RULES §6, TECH_PLAN §14. Two bakes per player, named once before episode 1.
+-- The GM ticks a key when it comes up; this view works out what that is worth.
+--
+--   sole holder      +5
+--   exactly two      +2 each
+--   three or more     0
+--   never came up     0
+--
+-- The GM's tick RECORDS A FACT — "madeleine came up in episode 3" — exactly as
+-- episode_results does, and the tiers are applied here. That is why this design
+-- needs no manual-points column despite being described as "manual": the §2
+-- boundary holds with no exception, and smoke_test.sql can assert the tiers.
+--
+-- HOLDERS ARE COUNTED PER LEAGUE, NOT PER SEASON, and that is a decision rather
+-- than an accident. Seasons are shared by every league playing them
+-- (TECH_PLAN §2), so a season-wide count would let a stranger in another league
+-- — someone the player has never met and is not competing against — quietly
+-- take their +5 away and turn it into +2. Points belong to a league because the
+-- leaderboard does. It is the opposite call from v_baker_stats, whose
+-- prediction counts ARE season-wide (TECH_PLAN Still-open #10), and the
+-- difference is that those are a stat and these are points.
+--
+-- Disallowed guesses are excluded HERE, before the count. That second half
+-- matters as much as the first: a disallowed guess still counted towards the
+-- tier would let one struck-out entry silently drop everybody else from +5
+-- to +2, which is the opposite of "as if it were never made" (RULES §2.5).
+--
+-- NOT GRANTED, and it must not be — see rls.sql. It carries player_id beside
+-- guess_key with no gate of its own, so granting it would publish everyone's
+-- guesses from the moment they were typed. The gate lives in
+-- v_series_guesses_public below, which is built on this one.
+
+create or replace view v_guess_scores as
+with held as (
+  select
+    pl.league_id,
+    g.guess_key,
+    count(*) as holders
+  from series_guesses g
+  join players pl on pl.id = g.player_id
+  where g.is_disallowed is false
+  group by pl.league_id, g.guess_key
+)
+select
+  g.player_id,
+  pl.league_id,
+  l.season_id,
+  g.slot,
+  g.guess_text,
+  g.guess_key,
+  h.holders,
+  -- NULL until the GM ticks it. Every caller reads this as "the episode this
+  -- guess paid in", so it is also the flag for whether it has landed at all.
+  gh.episode_id,
+  case
+    when gh.episode_id is null then 0
+    when h.holders = 1 then 5
+    when h.holders = 2 then 2
+    else 0
+  end as points
+from series_guesses g
+join players pl on pl.id = g.player_id
+join leagues l  on l.id = pl.league_id
+join held    h  on h.league_id = pl.league_id and h.guess_key = g.guess_key
+left join guess_hits gh on gh.season_id = l.season_id and gh.guess_key = g.guess_key
+where g.is_disallowed is false;
+
+-- ------------------------------------------------------------
+-- Public bake guesses — the load-bearing filter a THIRD time, on episode 1
+-- ------------------------------------------------------------
+-- Exactly the same shape as v_top_picks_public, one episode earlier: the bake
+-- guesses lock at **episode 1's deadline** and are revealed at the same moment,
+-- the way the top three lock and reveal at episode 2's.
+--
+-- `deadline_at is not null` FAILS CLOSED, as everywhere else. Episode 1 has no
+-- air date until the schedule is announced, so an empty board is this view
+-- working rather than this view broken.
+--
+-- THIS GATED ON `live_at` FIRST, AND THAT WAS A BUG — worth knowing, because
+-- `live_at` still looks like the more precise answer to "has episode 1 aired?"
+-- It is stamped only by the GM's Go live button and cleared by Take it back,
+-- and until this was fixed Take it back was the ONLY route from live to
+-- complete — so every episode reached "over" with a null live_at and the board
+-- emptied the moment the episode finished. A gate hanging off a button somebody
+-- has to remember to press is not a gate. `deadline_at` follows `air_date`
+-- through schema.sql's trigger and no button touches it.
+--
+-- WHAT THIS COSTS: the GM used to get the list first, in the gap between the
+-- lock and the episode airing, and unify the wordings before anybody read them.
+-- Now everyone sees it at once. That is survivable because this view publishes
+-- `guess_text` — what the player typed, which nothing ever edits — and never
+-- `guess_key` as the thing on display. Unifying moves points, not words, and no
+-- points can land until a guess is ticked, which is during episode 1 at the
+-- earliest. So the GM still has the same few hours; they are just not private.
+--
+-- Disallowed guesses ARE included, flagged, so the board can show them struck
+-- through — the same choice v_public_predictions makes, for the same reason.
+-- They are already out of `holders` and `points`, which come from
+-- v_guess_scores and arrive NULL and 0 for them.
+--
+-- Like every other view here it holds rows for EVERY league playing the season,
+-- so callers filter by the player ids from v_standings.
+
+create or replace view v_series_guesses_public as
+select
+  g.player_id,
+  g.slot,
+  g.guess_text,
+  g.guess_key,
+  g.is_late,
+  g.is_disallowed,
+  gs.holders,
+  gs.episode_id as hit_episode_id,
+  he.number     as hit_episode_number,
+  coalesce(gs.points, 0) as points
+from series_guesses g
+join players  pl on pl.id = g.player_id
+join leagues  l  on l.id = pl.league_id
+join episodes e1 on e1.season_id = l.season_id and e1.number = 1
+left join v_guess_scores gs
+       on gs.player_id = g.player_id and gs.guess_key = g.guess_key
+left join episodes he on he.id = gs.episode_id
+where e1.deadline_at is not null
+  and e1.deadline_at <= now();
+
+-- ------------------------------------------------------------
 -- Per-episode scores
 -- ------------------------------------------------------------
 -- One row per player per episode they entered. Entries are the spine, so a
 -- player who entered and got everything wrong appears with 0 — distinct from a
 -- player who never entered at all, who does not appear. The dashboard needs
 -- that difference to draw a flat line rather than a gap.
+--
+-- SINCE THE BAKE GUESS, ENTRIES ARE NOT THE WHOLE SPINE. A guess pays in the
+-- week it comes up, and that week may be one the player made no picks in — so
+-- an entries-only spine would have nowhere to put the points and would silently
+-- drop them. The spine is therefore entries UNION the weeks a guess paid in.
+--
+-- Only a guess that actually PAID pulls in a new row. A guess that came up but
+-- was too popular to score has nothing to deliver, and a 0-point row for
+-- somebody who sat that week out would put them on the chart for an episode
+-- they were never in.
+--
+-- This is also why guess points get an episode at all, where the top-three
+-- bonus cannot: v_series_bonus carries no episode, so it can never step the
+-- chart or produce movement, but a guess hits in a specific week and does both,
+-- on the night.
 
 create or replace view v_episode_scores as
 with picks as (
@@ -244,27 +391,57 @@ pens as (
     ) as penalties
   from v_penalties
   group by player_id, episode_id
+),
+guesses as (
+  select
+    player_id,
+    episode_id,
+    sum(points) as guess_points
+  from v_guess_scores
+  where episode_id is not null
+  group by player_id, episode_id
+),
+live_entries as (
+  select * from entries where is_disallowed is false
+),
+spine as (
+  select player_id, episode_id from live_entries
+  union
+  select player_id, episode_id from guesses where guess_points <> 0
 )
 select
-  en.player_id,
-  en.episode_id,
+  sp.player_id,
+  sp.episode_id,
   ep.number as episode_number,
-  coalesce(pk.pick_points, 0) + coalesce(pn.penalty_points, 0) as points,
+  coalesce(pk.pick_points, 0)
+    + coalesce(pn.penalty_points, 0)
+    + coalesce(gu.guess_points, 0) as points,
   coalesce(pk.pick_points, 0)    as pick_points,
   coalesce(pn.penalty_points, 0) as penalty_points,
   coalesce(pk.correct_count, 0)  as correct_count,
   coalesce(pk.picks_made, 0)     as picks_made,
+  -- NULL for a row that exists only because a guess paid: there is no entry, so
+  -- there is no submission to be late. Every reader treats it as a flag rather
+  -- than a value ('late' / 'very_late'), so null reads as "nothing to flag".
   en.lateness,
   (en.confirmed_at is not null)  as confirmed,
   -- Appended, not placed beside penalty_points where it belongs: CREATE OR
   -- REPLACE VIEW may only add columns to the end, and v_standings depends on
   -- this view, so re-ordering would mean dropping both and re-granting them.
-  coalesce(pn.penalties, '[]'::jsonb) as penalties
-from entries  en
-join episodes ep on ep.id = en.episode_id
-left join picks pk on pk.player_id = en.player_id and pk.episode_id = en.episode_id
-left join pens  pn on pn.player_id = en.player_id and pn.episode_id = en.episode_id
-where en.is_disallowed is false;
+  coalesce(pn.penalties, '[]'::jsonb) as penalties,
+  -- Appended for the same reason, and it is a NUMBER ONLY — deliberately not
+  -- the guess itself. This view is granted to anon with no gate of its own, so
+  -- carrying guess_key or guess_text here would be a second way to read the
+  -- guesses, on a different clock from v_series_guesses_public's. One secret,
+  -- one gate. The words reach the dashboard through that view and reach a
+  -- player's own panel through /api/player, which is authenticated.
+  coalesce(gu.guess_points, 0) as guess_points
+from spine sp
+join episodes ep on ep.id = sp.episode_id
+left join live_entries en on en.player_id = sp.player_id and en.episode_id = sp.episode_id
+left join picks   pk on pk.player_id = sp.player_id and pk.episode_id = sp.episode_id
+left join pens    pn on pn.player_id = sp.player_id and pn.episode_id = sp.episode_id
+left join guesses gu on gu.player_id = sp.player_id and gu.episode_id = sp.episode_id;
 
 -- ------------------------------------------------------------
 -- End-of-series bonuses
@@ -290,7 +467,7 @@ group by tp.player_id;
 -- ------------------------------------------------------------
 -- Standings
 -- ------------------------------------------------------------
--- The leaderboard. Ranked with rank(), so ties share a position — RULES §6's
+-- The leaderboard. Ranked with rank(), so ties share a position — RULES §7's
 -- tiebreak is applied by a human at the end of the series, not here.
 
 create or replace view v_standings as

@@ -9,8 +9,11 @@ count for this series.*
 
 Each week, before the episode airs, you predict what is going to happen in it.
 Points are awarded as the episode goes out, so the leaderboard moves while you
-watch. Separately, after the first episode you pick your three final bakers
-and hold them for the rest of the series.
+watch.
+
+Two things you commit to once and hold for the whole series, either side of the
+first episode: **two bake guesses** before episode 1 has aired (§6), and your
+**three final bakers** after it (§5).
 
 Everyone plays in a **league**. Several leagues run in parallel over the same
 series — the same real-world results feed all of them, but each has its own
@@ -163,7 +166,90 @@ Priya").
 
 ---
 
-## 6. Winning
+## 6. The bake guess
+
+Before the series starts, you name **two bakes** you think will come up.
+
+- **When:** guesses open as soon as the season is set up and lock at **18:00 on
+  the Tuesday of episode 1**, alongside that week's normal predictions. The same
+  deadline, the same LATE and VERY LATE flags, the same GM door.
+- **What:** free text — a bake, an ingredient, a technique. *"madeleine"*,
+  *"croquembouche"*, *"choux"*. You invent it; there is no list to pick from.
+- **Two different guesses**, and you are stuck with them for the series.
+
+### Why before episode 1, and not week by week
+
+Each week's teaser and episode description between them pretty much state what
+is about to be baked, so guessing next week's bake is barely a guess at all.
+Committing once, before anything has aired, fixes that — **a teaser can only
+spoil the next episode, so a guess covering all ten cannot be spoiled by one.**
+
+It is the mirror of the top three, which locks *after* episode 1 because it needs
+you to have watched everyone bake. This needs you to have watched nothing.
+
+### Scoring
+
+A guess pays out **the week it appears, once**:
+
+| Who said it | If it comes up |
+|-------------|---------------:|
+| **Only you** | **+5** |
+| **Exactly two of you** | **+2 each** |
+| Three or more of you | **0** |
+| It never comes up | **0** |
+
+**Maximum 10 for a perfect pair.** Points land in the week the bake appears, so
+they move the table on the night like everything else — unlike the top-three
+bonuses, which have no week of their own.
+
+That means an obvious guess is a bad guess. *"cake"* will certainly come up and
+will certainly be worth nothing, because everyone else thought of it too.
+
+### What counts as it coming up
+
+**The challenge titles are stated explicitly on the programme, so the title is
+what counts.** A guess hits when the word appears in the announced title of the
+**signature, the technical or the showstopper**.
+
+- **All three challenges count.** Signature and technical are unambiguous; the
+  showstopper counts too, but by the name it is given.
+- **Whole bakes only.** A component *inside* a bake does not count unless the
+  title names it. A chocolate egg sitting on a larger showstopper is not a hit;
+  *"Chocolate Egg Showstopper"* is.
+- A guess must be a **specific bake, ingredient or technique**. The GM may
+  reject one before the lock — but the tiers mostly handle this on their own,
+  since an obvious guess attracts company and pays nothing.
+
+The GM's ruling on whether a guess came up is final, in the same way as the
+Bingo Bonus.
+
+### The wording, and who tidies it
+
+Two people can write the same guess two ways — *"madeleine"* and
+*"madeleines"* — and that difference is worth three points, because it decides
+whether they are one guess or two.
+
+So the GM unifies the wordings **once**, as soon as the guesses lock and before
+any of them is ticked. What you typed is kept exactly as you typed it and shown
+on the dashboard — nothing ever edits that — so no word changes under you. The
+tidied version is what scoring counts, and it sits beside the original so you
+can see what happened.
+
+### When everyone sees them
+
+**Guesses go public at episode 1's deadline**, the same moment they lock, and
+the same way everyone's three go public at episode 2's.
+
+> **A late guess is the GM's judgement call.** Once the deadline passes the
+> guesses are public, so anyone submitting after it — LATE or VERY LATE — can
+> already see what everyone else took, and could pick something nobody has to
+> guarantee themselves +5. The GM can strike a guess out, which removes it from
+> scoring *and* from the count of who said what — so striking one out cannot
+> cost anybody else their points.
+
+---
+
+## 7. Winning
 
 The player with the most points at the end of the final wins.
 
@@ -178,10 +264,14 @@ If that somehow doesn't separate them, it's a shared title.
 
 ---
 
-## 7. Fair play
+## 8. Fair play
 
 - Predictions are **invisible to everyone else** — including the GM's dashboard —
   until the deadline passes. After that they're all public.
+- **Bake guesses are invisible to everyone, the GM included, until they lock**
+  at episode 1's deadline — at which point they all go public at once (§6). The
+  GM sees them no earlier than anybody else, and by then their own two are
+  locked like everybody's.
 - The GM is a player too, but the GM enters results *after* the deadline has
   locked their own entry like everybody else's.
 - The GM's rulings on the Bingo Bonus, and on whether a category went to Nobody,
@@ -190,25 +280,28 @@ If that somehow doesn't separate them, it's a shared title.
 
 ---
 
-## 8. Points summary card
+## 9. Points summary card
 
 *The thing to screenshot and send to the group chat.*
 
 ```
-EVERY WEEK                          END OF SERIES
-  Best Baker            +4            Top-3 baker reaches final   +3 each
-  Leaving Baker         +3            Series winner in your top 3 +6
-  Technical Winner      +2
-  Bingo Bonus           +2          FINAL WEEK
-  Handshake             +2            Winner of Bake Off          +5
-                                      Technical / Bingo / Handshake +2 each
-  Best Baker who left   −1
-  Leaving Baker who     −1          DEADLINE
-    got Star Baker                    18:00 Tuesday — the day of the
-                                      episode. After that: LATE.
-  Max 13/week                         Panel locks when it starts airing.
+EVERY WEEK                          ONCE, BEFORE EPISODE 1
+  Best Baker            +4            Two bake guesses
+  Leaving Baker         +3              only you said it          +5
+  Technical Winner      +2              exactly two of you        +2
+  Bingo Bonus           +2              three or more             0
+  Handshake             +2            Max 10, paid the week it comes up
 
-                                    Perfect series ≈ 130+
+  Best Baker who left   −1          END OF SERIES
+  Leaving Baker who     −1            Top-3 baker reaches final   +3 each
+    got Star Baker                    Series winner in your top 3 +6
+
+  Max 13/week                       FINAL WEEK
+                                      Winner of Bake Off          +5
+DEADLINE                              Technical / Bingo / Handshake +2 each
+  18:00 Tuesday — the day of the
+  episode. After that: LATE.        Perfect series ≈ 140+
+  Panel locks when it starts airing.
 ```
 
 ---
@@ -223,6 +316,10 @@ EVERY WEEK                          END OF SERIES
 | Final week card | **Winner +5**, no Leaving Baker, no penalty |
 | Top three revealed when? | **Start of episode 2**, then shown all series |
 | Multiple leagues share bingo prompts? | **Yes** — one GM entry updates every league |
+| Bake guess: once per series or weekly? | **Once, before episode 1** — a teaser spoils next week, so only a whole-series commitment is unspoilable |
+| Bake guess: does the showstopper count? | **Yes, all three challenges** — but by the title it is given, not by what is in it |
+| Bake guess: do elements within a bake count? | **No — whole bakes only.** The challenge titles are stated explicitly, so the guess has to be in the title |
+| Bake guess: who is counted as sharing it? | **Your league only** — points belong to a league because the leaderboard does |
 
 ## Still open
 

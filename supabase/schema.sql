@@ -277,6 +277,80 @@ create table if not exists top_picks (
 );
 
 -- ------------------------------------------------------------
+-- The bake guess — two bakes, once, before episode 1
+-- ------------------------------------------------------------
+-- RULES §6. Every player names two bakes they think will come up during the
+-- series. A guess pays out the week it appears, ONCE: +5 if they were the only
+-- one who said it, +2 each if exactly two of them did, nothing if three or more
+-- did, and nothing if it never comes up.
+--
+-- It locks before episode 1 where the top three locks after, and the reasons
+-- are opposite: the top three needs you to have watched everyone bake, and this
+-- needs you to have watched nothing. A teaser can only spoil the next episode,
+-- so a commitment made once for the whole series cannot be spoiled by one.
+--
+-- TWO COLUMNS FOR ONE ANSWER, and the difference between them is the whole
+-- design:
+--
+--   guess_text   what the player typed. NEVER edited, by anyone.
+--   guess_key    the GM's canonical form. This is what scoring counts.
+--
+-- Unifying is SCORING-RELEVANT — turning "madeleines" into "madeleine" can move
+-- somebody from sole (+5) to shared (+2) — so the board shows what they wrote,
+-- the scoring uses the key, and the edit is auditable. One column, and it
+-- removes a whole class of argument at a watch-along where the GM is also a
+-- player.
+
+create table if not exists series_guesses (
+  id            uuid primary key default gen_random_uuid(),
+  player_id     uuid not null references players(id) on delete cascade,
+  slot          int  not null check (slot between 1 and 2),
+  guess_text    text not null,
+  guess_key     text not null,
+  submitted_at  timestamptz not null default now(),
+  is_late       boolean not null default false,
+  -- The GM's switch, and the only way a guess leaves scoring. It is what makes
+  -- the VERY LATE case handleable: RULES §2.5 warns that a player let in after
+  -- the episode starts can already see everyone else's picks, and here that
+  -- would let them guarantee themselves a unique guess. Every scoring view
+  -- filters on it, INCLUDING the holders count — see v_guess_scores.
+  --
+  -- Note it is separate from entries.is_disallowed. A guess is not part of a
+  -- week's entry, so striking a week's picks leaves the guess standing and
+  -- vice versa.
+  is_disallowed boolean not null default false,
+  unique (player_id, slot),
+  -- Two DIFFERENT guesses, the same way top_picks enforces three different
+  -- bakers. On the KEY rather than the text, so that unifying two of somebody's
+  -- guesses into one is refused rather than silently halving their chances —
+  -- api/gm.js turns that refusal into a sentence.
+  unique (player_id, guess_key)
+);
+
+-- v_guess_scores groups every guess in a league by this column.
+create index if not exists series_guesses_key_idx on series_guesses (guess_key);
+
+-- One row per guess that came up, keyed on the CANONICAL form so that a single
+-- tick covers every player holding it — which is what makes the GM's weekly job
+-- shrink as the series runs: a hit resolves a guess and it drops off the list.
+create table if not exists guess_hits (
+  id         uuid primary key default gen_random_uuid(),
+  -- Denormalised from episodes.season_id, and it earns its place: the unique
+  -- constraint below needs the SEASON as its scope. Keyed on the episode alone,
+  -- the same guess could be ticked again in a later week and pay twice.
+  -- api/gm.js checks the episode really does belong to the season.
+  season_id  uuid not null references seasons(id) on delete cascade,
+  guess_key  text not null,
+  episode_id uuid not null references episodes(id) on delete cascade,
+  entered_at timestamptz not null default now(),
+  -- A GUESS PAYS ONCE. This constraint is the whole of that rule — the scoring
+  -- view cannot pay twice for a key that cannot be ticked twice.
+  unique (season_id, guess_key)
+);
+
+create index if not exists guess_hits_episode_idx on guess_hits (episode_id);
+
+-- ------------------------------------------------------------
 -- Season settings
 -- ------------------------------------------------------------
 -- When the top three lock, and therefore when they become public. Kept on the

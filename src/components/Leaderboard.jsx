@@ -18,7 +18,7 @@ import { usePopKey } from '../lib/usePopKey.js'
  *
  * v_standings ranks with rank(), so ties share a position and the sequence
  * skips — 1, 1, 3. That is shown as it is, with "joint 2nd" spelled out under
- * the name so two people both reading "2nd" doesn't look like a bug. RULES §6's
+ * the name so two people both reading "2nd" doesn't look like a bug. RULES §7's
  * tiebreak is applied by a human at the end of the series.
  */
 export function Leaderboard({ standings, scores, episode, states, onCycle, movement, meId }) {

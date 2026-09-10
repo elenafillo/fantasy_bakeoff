@@ -188,7 +188,7 @@ export async function fetchLive(league) {
   const ids = standings.map((r) => r.player_id)
   const inLeague = `in.(${ids.join(',')})`
 
-  const [scores, predictions, topPicks] = await Promise.all([
+  const [scores, predictions, topPicks, guesses] = await Promise.all([
     ids.length
       ? supabase.query('v_episode_scores', {
           select:
@@ -217,9 +217,26 @@ export async function fetchLive(league) {
           order: 'rank.asc',
         })
       : [],
+    // Empty until EPISODE 1's deadline — a third gate of the same fail-closed
+    // shape, one episode earlier than the top three's
+    // (v_series_guesses_public). It is in the poll rather than the once-only
+    // fetch because a hit lands mid-episode, which is the whole appeal: these
+    // points have an honest week, unlike the series bonus.
+    //
+    // Player filter load-bearing again: this view carries no league_id and
+    // holds rows for every league in the season.
+    ids.length
+      ? supabase.query('v_series_guesses_public', {
+          // guess_text, NOT guess_key: the board shows what the player wrote.
+          // The key is the GM's canonical form and scoring's business.
+          select: 'player_id,slot,guess_text,is_late,is_disallowed,hit_episode_number,points',
+          params: { player_id: inLeague },
+          order: 'slot.asc',
+        })
+      : [],
   ])
 
-  return { episodes, currentEpisode, standings, results, scores, predictions, topPicks }
+  return { episodes, currentEpisode, standings, results, scores, predictions, topPicks, guesses }
 }
 
 // ------------------------------------------------------------

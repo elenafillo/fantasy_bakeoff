@@ -84,15 +84,34 @@ export function EpisodesTab({ state, send, busy }) {
 
         <label className="field">
           <span className="picker-label">Status</span>
-          <select className="input" value={form.status} onChange={set('status')} disabled={ep.status === 'live'}>
-            <option value="upcoming">Upcoming</option>
-            <option value="locked">Locked</option>
-            {ep.status === 'live' && <option value="live">Live</option>}
-            <option value="complete">Complete</option>
+          {/* Live → Complete is allowed straight from here, and that matters
+              more than it looks: the only route used to be Take it back, which
+              CLEARS live_at, so an episode could never be both "aired" and
+              "over". Going back to upcoming or locked still goes through Take
+              it back, because that is the action that says it was never on air.
+
+              'live' is not selectable from any other status — it is the one
+              status with a side effect (live_at, the hard lock), so it stays
+              reachable only through Go live. api/gm.js refuses it too. */}
+          <select className="input" value={form.status} onChange={set('status')}>
+            {ep.status === 'live' ? (
+              <>
+                <option value="live">Live</option>
+                <option value="complete">Complete</option>
+              </>
+            ) : (
+              <>
+                <option value="upcoming">Upcoming</option>
+                <option value="locked">Locked</option>
+                <option value="complete">Complete</option>
+              </>
+            )}
           </select>
           {ep.status === 'live' && (
             <span className="small muted">
-              On air. Take it back below to change the status.
+              On air. Mark it <strong>Complete</strong> when the episode
+              finishes — that keeps the on-air time and moves everyone on to
+              next week. Take it back below only if it isn&rsquo;t really airing.
             </span>
           )}
         </label>

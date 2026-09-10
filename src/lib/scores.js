@@ -62,7 +62,7 @@ export async function fetchScoreboard({ episodeId, episodeNumber, leagueId, play
     week: perEpisode.find((r) => r.player_id === playerId && r.episode_id === episodeId) ?? null,
     // v_standings uses rank(), so ties share a position and the sequence then
     // skips: 1, 1, 3. Saying "joint 2nd" is what stops two people both reading
-    // "2nd" as an error. RULES §6's tiebreak is applied by a human at the end
+    // "2nd" as an error. RULES §7's tiebreak is applied by a human at the end
     // of the series, deliberately not in code.
     joint: mine ? table.filter((r) => r.position === mine.position).length > 1 : false,
     movement: movementFor({ table, perEpisode, playerId, episodeNumber }),

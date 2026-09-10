@@ -34,6 +34,8 @@ alter table episode_results enable row level security;
 alter table entries         enable row level security;
 alter table predictions     enable row level security;
 alter table top_picks       enable row level security;
+alter table series_guesses  enable row level security;
+alter table guess_hits      enable row level security;
 alter table season_settings enable row level security;
 
 -- ------------------------------------------------------------
@@ -50,6 +52,8 @@ revoke all on seasons,
               entries,
               predictions,
               top_picks,
+              series_guesses,
+              guess_hits,
               season_settings
   from anon, authenticated;
 
@@ -82,6 +86,7 @@ grant select on v_categories_public  to anon, authenticated;
 grant select on v_players_public     to anon, authenticated;
 grant select on v_public_predictions to anon, authenticated;
 grant select on v_top_picks_public   to anon, authenticated;
+grant select on v_series_guesses_public to anon, authenticated;
 grant select on v_episode_scores     to anon, authenticated;
 grant select on v_series_bonus       to anon, authenticated;
 grant select on v_standings          to anon, authenticated;
@@ -92,11 +97,17 @@ grant select on v_episode_results_public to anon, authenticated;
 -- Deliberately NOT granted, and worth stating so nobody adds them later by
 -- reflex: players (codes), entries, predictions, top_picks (private until
 -- episode 2's deadline — reached via v_top_picks_public, which applies that
--- gate), episode_results (reached via v_baker_stats and
--- v_episode_results_public, which expose what happened without the row ids or
--- the GM's typing times), season_settings.
+-- gate), series_guesses and guess_hits (private until episode 1 goes live —
+-- reached via v_series_guesses_public, which applies THAT gate),
+-- episode_results (reached via v_baker_stats and v_episode_results_public,
+-- which expose what happened without the row ids or the GM's typing times),
+-- season_settings.
 --
--- v_prediction_scores and v_penalties are also not granted: they are internal
--- steps, computed from entries with no deadline filter of their own. They are
--- safe only because the views that use them aggregate away the individual
--- picks. Granting either would leak this week's predictions.
+-- v_prediction_scores, v_penalties and v_guess_scores are also not granted:
+-- they are internal steps, computed from entries and series_guesses with no
+-- gate of their own. The first two are safe only because the views that use
+-- them aggregate away the individual picks; granting either would leak this
+-- week's predictions. v_guess_scores is the starker case — it carries
+-- guess_key beside player_id, so granting it would publish everyone's guesses
+-- from the moment they were typed, which is exactly what the reveal exists to
+-- prevent. v_episode_scores takes a NUMBER from it and nothing else.

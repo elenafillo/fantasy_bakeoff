@@ -6,6 +6,9 @@ import { EpisodesTab } from './gm/EpisodesTab.jsx'
 import { EntriesTab } from './gm/EntriesTab.jsx'
 import { PlayersTab } from './gm/PlayersTab.jsx'
 import { BakersTab } from './gm/BakersTab.jsx'
+import { GuessesTab } from './gm/GuessesTab.jsx'
+import { LeaguesTab } from './gm/LeaguesTab.jsx'
+import { ALL, byLeagueOrder } from './gm/leagueScope.js'
 
 /**
  * The GM control room.
@@ -128,14 +131,38 @@ const TABS = [
   ['entries', 'Entries', EntriesTab],
   ['players', 'Players', PlayersTab],
   ['bakers', 'Bakers', BakersTab],
+  // A season tab, like Live and Bakers: one tick covers every league. It is
+  // read once to tidy the wordings and then briefly each week, which puts it
+  // behind the tabs used at speed and in front of the one used once ever.
+  ['guesses', 'Guesses', GuessesTab],
+  // Last: a league is set up once and then left alone, so it sits past the tabs
+  // that get used every week rather than in front of them on a phone.
+  ['leagues', 'Leagues', LeaguesTab],
 ]
+
+// The two tabs that are about a league rather than about the season, and so the
+// only two the league picker appears over. gm/leagueScope.js explains why the
+// other four must not get one — Guesses included, despite being full of people.
+const LEAGUE_SCOPED = new Set(['entries', 'players'])
 
 function Console({ state, password, setState, onLock }) {
   const [tab, setTab] = useState('live')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [leagueId, setLeagueId] = useState(ALL)
 
-  const { episode, episodes } = state
+  const { episode, episodes, leagues } = state
+
+  // A league that has gone away — archived and deleted from another device,
+  // say — must not leave the panel filtered to nobody with no way back.
+  const scope = leagues.some((l) => l.id === leagueId) ? leagueId : ALL
+
+  // Shown on both league-scoped tabs whatever the count, including the ordinary
+  // one-league case. Appearing only once a second league exists would mean the
+  // control nobody has seen turns up on the evening it first matters — and it
+  // is also the answer to "which of these tabs is about a league?", which is
+  // worth being able to read off the screen rather than having to know.
+  const showLeagues = LEAGUE_SCOPED.has(tab) && leagues.length > 0
 
   async function send(action, extra = {}) {
     setBusy(true)
@@ -157,8 +184,11 @@ function Console({ state, password, setState, onLock }) {
         <div className="who">
           <div>
             <strong>{state.season.name}</strong>
+            {/* Counts everything in the season, archived leagues and their
+                players included — the same basis for all three numbers. */}
             <div className="small muted">
               {state.players.length} player{state.players.length === 1 ? '' : 's'} ·{' '}
+              {state.leagues.length} league{state.leagues.length === 1 ? '' : 's'} ·{' '}
               {state.bakers.length} bakers
             </div>
           </div>
@@ -196,13 +226,36 @@ function Console({ state, password, setState, onLock }) {
           </select>
         </label>
 
+        {showLeagues && (
+          <label className="field">
+            <span className="picker-label">League</span>
+            <select
+              className="input"
+              value={scope}
+              disabled={busy}
+              onChange={(e) => setLeagueId(e.target.value)}
+            >
+              <option value={ALL}>All leagues</option>
+              {[...leagues].sort(byLeagueOrder).map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}{l.is_active ? '' : ' · archived'}
+                </option>
+              ))}
+            </select>
+            <span className="small muted">
+              Who is playing, and nothing else. The episodes, the cast and every
+              result are the same for all of them.
+            </span>
+          </label>
+        )}
+
         {error && <p className="notice bad" role="alert">{error}</p>}
       </Panel>
 
       {!episode ? (
         <Panel><p className="muted">No episodes in this season yet.</p></Panel>
       ) : (
-        <Active state={state} send={send} busy={busy} />
+        <Active state={state} send={send} busy={busy} leagueId={scope} />
       )}
 
     </>

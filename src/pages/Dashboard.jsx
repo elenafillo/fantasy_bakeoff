@@ -9,6 +9,7 @@ import { ResultsGrid } from '../components/ResultsGrid.jsx'
 import { PredictionWall } from '../components/PredictionWall.jsx'
 import { SeriesRecap } from '../components/SeriesRecap.jsx'
 import { TopThreeBoard } from '../components/TopThreeBoard.jsx'
+import { GuessBoard } from '../components/GuessBoard.jsx'
 import { StatsStrip } from '../components/StatsStrip.jsx'
 import { buildStats } from '../lib/stats.js'
 import { Link } from '../lib/Link.jsx'
@@ -254,6 +255,16 @@ export default function Dashboard({ slug }) {
         topPicks={live.topPicks}
         standings={live.standings}
         episodeTwo={live.episodes.find((e) => e.number === 2) ?? null}
+      />
+
+      {/* Below the top three, which is the more consequential commitment — 15
+          points against 10 — and the one that changes what people shout at the
+          screen. Both are once-per-series, so both sit under everything that
+          moves weekly. */}
+      <GuessBoard
+        guesses={live.guesses}
+        standings={live.standings}
+        episodeOne={live.episodes.find((e) => e.number === 1) ?? null}
       />
 
       {/* Above the recap: these are facts about the season so far, and the

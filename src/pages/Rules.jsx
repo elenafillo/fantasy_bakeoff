@@ -24,8 +24,7 @@ export default function Rules() {
       <Panel head="How it works">
         <h1>The rules</h1>
         <p className="muted">
-          Every week you name a baker in five categories. Points land <strong>as
-          the episode airs</strong>, so the table moves while you watch.
+          Before each episode, you name a baker in five categories, and win points once the episode airs:
         </p>
 
         <h2 className="rules-h">Every week</h2>
@@ -34,15 +33,15 @@ export default function Rules() {
             <tr><th>Best Baker</th><td className="pts">+4</td><td>Who gets Star Baker</td></tr>
             <tr><th>Leaving Baker</th><td className="pts">+3</td><td>Who goes home</td></tr>
             <tr><th>Technical Winner</th><td className="pts">+2</td><td>First in the technical</td></tr>
-            <tr><th>Bingo Bonus</th><td className="pts">+2</td><td>Who the GM&rsquo;s bingo event happens to</td></tr>
+            <tr><th>Bingo Bonus</th><td className="pts">+2</td><td>Who the weekly's bingo event happens to</td></tr>
             <tr><th>Handshake</th><td className="pts">+2</td><td>Who gets a Hollywood handshake</td></tr>
           </tbody>
         </table>
         <p className="small muted">Thirteen points is a perfect week.</p>
 
         <h2 className="rules-h">The penalty</h2>
-        <p>
-          Reading a baker badly wrong in <em>both</em> directions costs a point:
+        <p className="muted">
+          Getting it very wrong will cost you points:
         </p>
         <table className="rules-table">
           <tbody>
@@ -50,45 +49,42 @@ export default function Rules() {
             <tr><th>You said they&rsquo;d go home, they got Star Baker</th><td className="pts cost">&minus;1</td></tr>
           </tbody>
         </table>
-        <p className="small muted">
-          Both can fire in one week, so the worst possible week is &minus;2.
-        </p>
       </Panel>
 
       <Panel head="The deadline">
         <h2 className="rules-h">18:00 Tuesday</h2>
         <p>
-          UK time, the day of the episode. Change your mind as often as you like
-          before then — <strong>Confirm</strong> just marks it final, and you can
-          un-confirm right up to the wire. An incomplete entry still scores for
+          UK time, the day of the episode. Press the <strong>Confirm</strong> button to mark your choices as final (you can un-confirm up to the deadline). An incomplete entry still scores for
           whatever you did fill in.
         </p>
+        <p>
+          Submissions after 18:00 but before the episode begins will be marked as <span className="flag">LATE</span>. 
+        </p>
 
-        <table className="rules-table">
+        {/* <table className="rules-table">
           <tbody>
             <tr><th>Before 18:00</th><td>Always fine</td></tr>
             <tr><th>After the deadline, before it airs</th><td><span className="flag">LATE</span> — still allowed</td></tr>
             <tr><th>Once the episode has started</th><td><span className="flag">VERY LATE</span> — only if the GM opens the door</td></tr>
           </tbody>
-        </table>
+        </table> */}
 
         <p className="notice">
           <strong>Everyone&rsquo;s picks go public the moment the deadline passes.</strong>{' '}
-          You will need a very very good excuse for a submission post-episode.
+          Submissions after the episode begins will only be allowed on very special circumstances and marked as <span className="flag">VERY LATE</span>
         </p>
       </Panel>
 
       <Panel head="Your top three">
         <h2 className="rules-h">Three bakers, once, for the whole series</h2>
         <p>
-          After episode 1 — once you&rsquo;ve seen everyone bake — you commit to
-          three bakers to reach the final. In no particular order, and{' '}
-          <strong>no swaps later</strong>, even after one goes home.
+          After episode 1 you commit to
+          three bakers to reach the final:
         </p>
         <table className="rules-table">
           <tbody>
-            <tr><th>Each of your three who reaches the final</th><td className="pts">+3</td></tr>
-            <tr><th>The series winner is one of your three</th><td className="pts">+6</td></tr>
+            <tr><th>For each of your three who reaches the final</th><td className="pts">+3</td></tr>
+            <tr><th>If the series winner is one of your three</th><td className="pts">+6</td></tr>
           </tbody>
         </table>
         <p className="small muted">
@@ -96,6 +92,36 @@ export default function Rules() {
           finalists are known; the +6 at the final. Picks lock with episode
           2&rsquo;s deadline, and everyone&rsquo;s three go public at the same moment.
         </p>
+      </Panel>
+
+      {/* Before the top three in the reading order would be wrong — this is the
+          smaller prize and the newer game — but it goes after it for a better
+          reason: the two are a pair, and the top three is the one people already
+          know. RULES.md orders them the same way. */}
+      <Panel head="The bake guess">
+        <h2 className="rules-h">Two bakes, before episode 1</h2>
+        <p>
+          Together with your episode 1 picks, choose two bakes you think will come up during the series. There are no changes
+          after that. 
+        </p>
+        <p>
+
+        </p>
+        <table className="rules-table">
+          <tbody>
+            <tr><th>It comes up and you were the only person to write it</th><td className="pts">+5</td></tr>
+            <tr><th>It comes up and exactly two of you wrote it</th><td className="pts">+2</td></tr>
+            <tr><th>It comes up and three or more of you wrote it</th><td className="pts">0</td></tr>
+            <tr><th>It never comes up</th><td className="pts">0</td></tr>
+          </tbody>
+        </table>
+
+        <h2 className="rules-h">What counts as it coming up</h2>
+        <ul className="rules-list">
+          <li> To count as valid, the guess needs to be explicitly named in the task. For example, you guess <em>trifle</em>, and the Showstopper task is <em>Celebratory Free-Standing Trifle</em>. </li>
+          <li><strong>All three challenges count</strong>, the showstopper included — but by the name it&rsquo;s given, not by other components inside of it.</li>
+          <li>The GM&rsquo;s ruling is final, same as the bingo.</li>
+        </ul>
       </Panel>
 
       <Panel head="Weeks that don’t behave">
@@ -106,15 +132,14 @@ export default function Rules() {
           pays no one, and no penalty can fire from it.
         </p>
         <ul className="rules-list">
-          <li><strong>Two bakers go home?</strong> Naming either scores the full +3. Not +6 — one correct call, one prize.</li>
+          <li><strong>Two bakers go home?</strong> Naming either scores the full +3. </li>
           <li><strong>Several handshakes, or the bingo hits several bakers?</strong> Same again: naming any of them scores once.</li>
           <li><strong>No Star Baker, no handshake, nobody leaves?</strong> That category goes to Nobody.</li>
         </ul>
       </Panel>
 
       <Panel head="The final">
-        <h2 className="rules-h">A different card</h2>
-        <p className="muted">
+        <p>
           Three bakers, no elimination and no Star Baker, so the final scores
           differently:
         </p>
@@ -126,27 +151,22 @@ export default function Rules() {
             <tr><th>Handshake</th><td className="pts">+2</td></tr>
           </tbody>
         </table>
+        <p className="rules-h">
+          Most points at the end of the final wins. 
+        </p>
         <p className="small muted">
-          Most points at the end of the final wins. Ties go to most correct Star
+        Ties go to most correct Star
           Baker calls, then Leaving Baker, then fewest penalties, then whoever
           was consistently the most organised about submitting.
         </p>
       </Panel>
 
+      {/* The colophon, alone in its own box. Wording and link are Elena's, and
+          the attribution half is hers on purpose — it credits somebody else's
+          game, and that is not a thing to guess at. Note it says UNOFFICIAL:
+          that site states it is not affiliated with the programme, Channel 4 or
+          Love Productions, so calling it official would be wrong twice over. */}
       <Panel>
-        <h2 className="rules-h">Fair play</h2>
-        <ul className="rules-list">
-          <li>Nobody sees your picks before the deadline — <strong>including the GM</strong>, who plays too.</li>
-          <li>The GM enters results after the deadline has locked their own entry, like everyone else&rsquo;s.</li>
-          <li>The GM&rsquo;s call on the bingo, and on whether a category went to Nobody, is final.</li>
-          <li>Spoilers from the press, leaks or the future are, obviously, out.</li>
-        </ul>
-
-        {/* The colophon. Wording and link are Elena's, and the attribution half
-            is hers on purpose — it credits somebody else's game, and that is
-            not a thing to guess at. Note it says UNOFFICIAL: that site states
-            it is not affiliated with the programme, Channel 4 or Love
-            Productions, so calling it official would be wrong twice over. */}
         <p className="colophon">
           This game is a home-made version of the unofficial{' '}
           <a href="https://fantasybakeoff.co.uk/" target="_blank" rel="noreferrer noopener">

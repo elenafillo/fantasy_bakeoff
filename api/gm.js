@@ -2,7 +2,8 @@
 // POST /api/gm — everything the GM does
 // ============================================================
 // Actions: state · setCategory · setEpisode · goLive · toggleDisallow ·
-//          unlockEntry · upsertPlayer · generateCode · upsertBaker
+//          unlockEntry · upsertLeague · upsertPlayer · generateCode ·
+//          upsertBaker · setGuess · setGuessHit
 //
 // The password is compared against process.env.GM_PASSWORD on EVERY request.
 // There is no session and no token, deliberately: a session is a second thing
@@ -20,6 +21,7 @@ import { rest, restInsert, restPatch, restDelete, jsonBody, isUuid } from './_su
 import { pickCurrent, categoriesFor } from './_episodes.js'
 import { prettyCode, IDENTITY_COLOURS } from './_wordlists.js'
 import { issueCode } from './_codes.js'
+import { normaliseGuess, GUESS_MAX } from './_guesses.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only.' })
@@ -55,12 +57,18 @@ export default async function handler(req, res) {
         return await toggleDisallow(res, body)
       case 'unlockEntry':
         return await unlockEntry(res, body)
+      case 'upsertLeague':
+        return await upsertLeague(res, body)
       case 'upsertPlayer':
         return await upsertPlayer(res, body)
       case 'generateCode':
         return await generateCode(res, body)
       case 'upsertBaker':
         return await upsertBaker(res, body)
+      case 'setGuess':
+        return await setGuess(res, body)
+      case 'setGuessHit':
+        return await setGuessHit(res, body)
       default:
         return res.status(400).json({ error: `Unknown action "${body.action}".` })
     }
@@ -151,6 +159,8 @@ async function buildState({ episodeId }) {
     ])
   }
 
+  const guesses = await buildGuesses(season, episodes, players, now)
+
   return {
     season,
     leagues,
@@ -158,6 +168,7 @@ async function buildState({ episodeId }) {
     bakers,
     episodes,
     episode,
+    guesses,
     // What the GM can score this week. The final swaps Star Baker and the
     // elimination for the outright winner, and the Live tab must not offer a
     // category that nobody was allowed to predict.
@@ -208,6 +219,127 @@ function shapeEntry(en, picksPublic) {
       ? Object.fromEntries(predictions.map((p) => [p.category, p.baker_id]))
       : null,
   }
+}
+
+/**
+ * The Guesses tab's data — RULES §6.
+ *
+ * SEASON-WIDE, not per episode, and that is what makes it one of the tabs about
+ * the season rather than about a league: `guess_hits` is keyed on the season, so
+ * one tick covers every league playing the series, exactly like a result.
+ *
+ * THE GM IS A PLAYER TOO, so this withholds the guesses themselves until
+ * episode 1's deadline has passed — the moment the GM's own pair is locked
+ * along with everybody else's. Before that it sends a count and nothing more,
+ * the same rule shapeEntry applies to picks and for the same reason.
+ *
+ * That is the same moment the public board opens (v_series_guesses_public), so
+ * the GM no longer gets the list first. Unifying the wordings therefore happens
+ * in the open — which is survivable, because the board shows `guess_text` and
+ * nothing ever edits that. Unifying moves points, not words, and no points can
+ * land until a guess is ticked.
+ *
+ * `points` and `holders` come from v_guess_scores — the service role reads it
+ * even though rls.sql grants it to nobody. The grouping below is display; the
+ * arithmetic stays in SQL, so this panel cannot disagree with the dashboard
+ * about what a guess is worth.
+ */
+async function buildGuesses(season, episodes, players, now) {
+  const episodeOne = episodes.find((e) => e.number === 1) ?? null
+  const visible =
+    Boolean(episodeOne?.deadline_at) && new Date(episodeOne.deadline_at) <= now
+
+  const ids = players.map((p) => p.id)
+  if (ids.length === 0) {
+    return { visible, submitted: 0, players: 0, keys: [], orphans: [], locksAt: episodeOne?.deadline_at ?? null }
+  }
+
+  const rows = await rest(
+    'series_guesses',
+    `select=id,player_id,slot,guess_text,guess_key,is_late,is_disallowed` +
+      `&player_id=in.(${ids.join(',')})&order=guess_key.asc,slot.asc`
+  )
+
+  const submitted = new Set(rows.map((r) => r.player_id)).size
+
+  if (!visible) {
+    // A count, and not one word of what anybody wrote. The scores and hits are
+    // not fetched at all — this runs on every GM action, including each result
+    // typed on the night, and there is nothing they could be used for yet.
+    return {
+      visible: false,
+      submitted,
+      players: ids.length,
+      keys: [],
+      orphans: [],
+      locksAt: episodeOne?.deadline_at ?? null,
+    }
+  }
+
+  const [scores, hits] = await Promise.all([
+    rest('v_guess_scores', `select=player_id,guess_key,holders,episode_id,points&season_id=eq.${season.id}`),
+    rest('guess_hits', `select=guess_key,episode_id&season_id=eq.${season.id}`),
+  ])
+
+  const byId = new Map(players.map((p) => [p.id, p]))
+  const scoreOf = new Map(scores.map((s) => [`${s.player_id} ${s.guess_key}`, s]))
+  const episodeOf = new Map(episodes.map((e) => [e.id, e]))
+  const hitOf = new Map(hits.map((h) => [h.guess_key, h]))
+
+  const grouped = new Map()
+  for (const row of rows) {
+    if (!grouped.has(row.guess_key)) grouped.set(row.guess_key, [])
+    const player = byId.get(row.player_id)
+    const score = scoreOf.get(`${row.player_id} ${row.guess_key}`) ?? null
+    grouped.get(row.guess_key).push({
+      id: row.id,
+      player_id: row.player_id,
+      display_name: player?.display_name ?? 'Unknown',
+      colour_hex: player?.colour_hex ?? null,
+      league_id: player?.league_id ?? null,
+      slot: row.slot,
+      // What they typed, never edited. It sits beside the key on the tab so the
+      // unification is visible rather than something that happened to them.
+      guess_text: row.guess_text,
+      is_late: row.is_late,
+      is_disallowed: row.is_disallowed,
+      // Null for a disallowed guess: v_guess_scores drops it, which is the
+      // point of the switch.
+      points: score?.points ?? null,
+      holders: score?.holders ?? null,
+    })
+  }
+
+  const keys = [...grouped.entries()]
+    .map(([key, holders]) => {
+      const hit = hitOf.get(key) ?? null
+      return {
+        key,
+        holders,
+        hit_episode_id: hit?.episode_id ?? null,
+        hit_episode_number: hit ? (episodeOf.get(hit.episode_id)?.number ?? null) : null,
+      }
+    })
+    // Unresolved first, then alphabetically: the weekly job is scanning the
+    // ones still in play, and a guess that has already paid is done with.
+    .sort((a, b) =>
+      (a.hit_episode_id ? 1 : 0) - (b.hit_episode_id ? 1 : 0) || a.key.localeCompare(b.key)
+    )
+
+  // A tick whose key nobody holds any more — the GM unified a guess after
+  // ticking it, and the hit now pays nobody. Harmless (v_guess_scores left-joins
+  // hits to guesses, so an orphan simply never matches) but invisible unless the
+  // panel says so, which is how it would go unnoticed for a series.
+  const held = new Set(rows.map((r) => r.guess_key))
+  const orphans = hits
+    .filter((h) => !held.has(h.guess_key))
+    .map((h) => ({
+      key: h.guess_key,
+      episode_id: h.episode_id,
+      episode_number: episodeOf.get(h.episode_id)?.number ?? null,
+    }))
+
+  return { visible: true, submitted, players: ids.length, keys, orphans, locksAt: episodeOne?.deadline_at ?? null }
 }
 
 // ------------------------------------------------------------
@@ -617,6 +749,237 @@ function wholeNumber(raw, what) {
   const n = Number(raw)
   if (!Number.isInteger(n)) throw new HttpError(400, `The ${what} has to be a whole number.`)
   return n
+}
+
+// ------------------------------------------------------------
+// The bake guess — unifying, and the weekly tick
+// ------------------------------------------------------------
+// Two verbs, and the split is the same one episode_results makes: setGuess says
+// what a guess IS, setGuessHit says what HAPPENED. Neither awards a point —
+// v_guess_scores applies the 5/2/0 tiers — so despite this game being described
+// as "manual", there is no manual-points column anywhere in it.
+//
+// `guess_text` is not editable here, or anywhere. What the player typed is the
+// record; the GM's canonical form is a second column beside it. That is what
+// keeps unifying auditable, and unifying needs to be auditable because it is
+// SCORING-RELEVANT: turning "madeleines" into "madeleine" can move somebody
+// from sole (+5) to shared (+2).
+
+async function setGuess(res, body) {
+  try {
+    const season = await activeSeason()
+    if (!isUuid(body.guessId)) throw new HttpError(400, 'Which guess?')
+
+    const rows = await rest(
+      'series_guesses',
+      `select=id,player_id,guess_key&id=eq.${body.guessId}&limit=1`
+    )
+    const guess = rows[0]
+    if (!guess) throw new HttpError(404, 'No such guess.')
+
+    // Scoped to the season in a second step rather than through a two-level
+    // embedded filter. loadPlayer already does exactly this check and is used
+    // by every other action here, so the scoping cannot quietly differ — and a
+    // filter that silently failed to apply would be a scoping hole rather than
+    // an error. With the demo seasons in the database this is not theoretical.
+    await loadPlayer(season, guess.player_id)
+
+    const patch = {}
+
+    if ('guess_key' in body) {
+      const key = normaliseGuess(body.guess_key)
+      if (key.length < 2) {
+        throw new HttpError(400, 'A guess needs at least a couple of characters in it.')
+      }
+      if (key.length > GUESS_MAX) {
+        throw new HttpError(400, `Keep it under ${GUESS_MAX} characters.`)
+      }
+      // The player holds two guesses and they must stay different. The unique
+      // constraint would refuse this anyway; catching it here means the GM is
+      // told what happened rather than shown a Postgres error.
+      const theirs = await rest(
+        'series_guesses',
+        `select=id,guess_key&player_id=eq.${guess.player_id}`
+      )
+      const clash = theirs.find((g) => g.id !== guess.id && g.guess_key === key)
+      if (clash) {
+        throw new HttpError(
+          400,
+          `That would give them "${key}" twice. Unify the other one instead, or leave them apart.`
+        )
+      }
+      patch.guess_key = key
+    }
+
+    if ('is_disallowed' in body) patch.is_disallowed = body.is_disallowed === true
+
+    if (Object.keys(patch).length === 0) throw new HttpError(400, 'Nothing to change.')
+
+    await restPatch('series_guesses', `id=eq.${guess.id}`, patch)
+    return res.status(200).json(await buildState(body))
+  } catch (err) {
+    return fail(res, err)
+  }
+}
+
+/**
+ * Tick a guess as having come up, or take the tick back.
+ *
+ * Keyed on the CANONICAL form, so one tick covers every player holding it —
+ * which is what makes the weekly job shrink as the series runs: a hit resolves
+ * a guess and it drops off the list.
+ *
+ * Ticking a key that already has a hit MOVES it to the named episode rather
+ * than failing. A guess still pays once — the unique constraint on
+ * (season_id, guess_key) sees to that, and the upsert merges on it — so the
+ * only thing this permits is correcting the week, which is a mis-tap the GM
+ * will otherwise have to fix in SQL on episode night.
+ */
+async function setGuessHit(res, body) {
+  try {
+    const season = await activeSeason()
+    const episode = await loadEpisode(season, body.episodeId)
+
+    const key = normaliseGuess(body.guessKey)
+    if (key.length < 2) throw new HttpError(400, 'Which guess?')
+
+    if (body.hit === false) {
+      await restDelete(
+        'guess_hits',
+        `season_id=eq.${season.id}&guess_key=eq.${encodeURIComponent(key)}`
+      )
+    } else {
+      await restInsert(
+        'guess_hits',
+        { season_id: season.id, guess_key: key, episode_id: episode.id },
+        { onConflict: 'season_id,guess_key' }
+      )
+    }
+
+    return res.status(200).json(await buildState({ episodeId: episode.id }))
+  } catch (err) {
+    return fail(res, err)
+  }
+}
+
+// ------------------------------------------------------------
+// Leagues — the parallel tables
+// ------------------------------------------------------------
+// A league is a roster and a table, NOT a copy of the game. Bakers, episodes,
+// deadlines and every result hang off the season and are shared by all of them
+// (TECH_PLAN §2), so a second league costs nothing on the night: each result is
+// still typed once and every league's dashboard moves at the same moment.
+//
+// There is no delete, for the same reason there is none on players or bakers,
+// only more so — it cascades through players to every entry, prediction and top
+// three in one statement. Archiving is what you actually want: v_leagues_public
+// already carries `where is_active`, so an archived league drops off the
+// dashboard while all of its data stays exactly where it was.
+//
+// ⚠️ ARCHIVING IS A DISPLAY CHANGE, NOT A LOCK. api/player.js finds a player by
+// their code alone and takes the league off the join, with no is_active check —
+// so an archived league's players can still log in at /play and submit picks.
+// Archive last year's league; do not archive one to shut somebody out.
+
+async function upsertLeague(res, body) {
+  try {
+    const season = await activeSeason()
+    // EVERY league, not just this season's: leagues.slug is a plain unique
+    // constraint rather than a per-season one, because a /league/<slug> URL
+    // carries no season with it.
+    const all = await rest('leagues', 'select=id,season_id,name,slug,is_default,is_active')
+    const mine = all.filter((l) => l.season_id === season.id)
+
+    const name = typeof body.name === 'string' ? body.name.trim() : ''
+
+    let current = null
+    if (body.leagueId !== undefined) {
+      if (!isUuid(body.leagueId)) throw new HttpError(400, 'Which league?')
+      current = mine.find((l) => l.id === body.leagueId) ?? null
+      if (!current) throw new HttpError(404, 'No such league in this season.')
+    }
+
+    const patch = {}
+
+    if ('name' in body || !current) {
+      if (!name) throw new HttpError(400, 'A league needs a name.')
+      const clash = mine.find(
+        (l) => l.id !== current?.id && l.name.toLowerCase() === name.toLowerCase()
+      )
+      if (clash) throw new HttpError(400, `There is already a league called ${clash.name}.`)
+      patch.name = name
+    }
+
+    if ('slug' in body || !current) {
+      const asked =
+        'slug' in body && String(body.slug ?? '').trim() ? body.slug : (patch.name ?? current?.name)
+      const slug = slugify(asked)
+      if (!slug) throw new HttpError(400, 'A link needs some letters or numbers in it.')
+      const clash = all.find((l) => l.id !== current?.id && l.slug === slug)
+      if (clash) throw new HttpError(400, `/league/${slug} is already ${clash.name}.`)
+      patch.slug = slug
+    }
+
+    if ('is_active' in body) {
+      const active = body.is_active === true
+      if (!active && current?.is_default) {
+        throw new HttpError(
+          400,
+          'That is the league an anonymous visitor lands on. Make another league the default first.'
+        )
+      }
+      patch.is_active = active
+    }
+
+    // The default can be MOVED but never switched off. It is what someone
+    // opening "/" with no code sees, and a season with none makes that landing
+    // page arbitrary — src/lib/dashboard.js falls through to whichever league it
+    // happened to fetch first. So only `true` does anything here, and the first
+    // league in a season takes it automatically rather than leaving that gap.
+    const makeDefault = body.is_default === true || (!current && mine.length === 0)
+
+    if (makeDefault) {
+      const willBeActive = 'is_active' in patch ? patch.is_active : (current?.is_active ?? true)
+      if (!willBeActive) throw new HttpError(400, 'An archived league cannot be the default.')
+
+      // Clear first, then set. leagues_one_default_per_season permits exactly
+      // one, so set-then-clear is rejected outright by the index. This order
+      // leaves a moment with no default rather than a moment with two, which is
+      // the harmless direction to fail in.
+      await restPatch('leagues', `season_id=eq.${season.id}&is_default=is.true`, {
+        is_default: false,
+      })
+      patch.is_default = true
+    }
+
+    if (current) {
+      if (Object.keys(patch).length === 0) throw new HttpError(400, 'Nothing to change.')
+      await restPatch('leagues', `id=eq.${current.id}`, patch)
+    } else {
+      await restInsert('leagues', { season_id: season.id, ...patch })
+    }
+
+    return res.status(200).json(await buildState(body))
+  } catch (err) {
+    return fail(res, err)
+  }
+}
+
+/**
+ * A slug has to survive being a URL and being read down a phone. It is
+ * NORMALISED rather than validated, so "The Proving Drawer" quietly becomes
+ * "the-proving-drawer" instead of being handed back as an error.
+ *
+ * The result must match the /league/<slug> pattern in src/App.jsx — a league
+ * whose slug the router rejects exists with no way to link to it, which is a
+ * thing you would only discover after sending the link round.
+ */
+function slugify(raw) {
+  return String(raw ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .slice(0, 60)
+    .replace(/^-+|-+$/g, '')
 }
 
 // ------------------------------------------------------------

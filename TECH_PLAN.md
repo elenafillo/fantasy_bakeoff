@@ -42,6 +42,17 @@ several from day one, because retrofitting it later means touching every query.
 
 Leagues own only their own players, entries and standings.
 
+**Where this now stands.** The GM side is built — a Leagues tab, and a league
+picker over the two tabs that are about a league rather than the season (§5).
+The dashboard has resolved leagues since phase 5 (`/league/<slug>`, then the
+league behind your stored code, then `is_default`), so people already land on
+their own table without being asked which one they are in. **The one piece not
+built is a league switcher on the dashboard** — today you swap by knowing the
+slug. `resolveLeague` already fetches every league and throws all but two away,
+so that costs no extra query when it is wanted.
+
+One league is still all that is running.
+
 ---
 
 ## 3. Data model
@@ -49,10 +60,17 @@ Leagues own only their own players, entries and standings.
 ```
 seasons ──┬── bakers
           ├── episodes ──── episode_results
+          ├── guess_hits            (season + guess_key → the week it came up)
           └── leagues ──┬── players ──┬── entries ──── predictions
-                        │             └── top_picks
+                        │             ├── top_picks
+                        │             └── series_guesses
                         └── (settings)
 ```
+
+`guess_hits` hangs off the **season** while `series_guesses` hangs off a
+**player**, and they are joined by the canonical guess text rather than by an
+id. That is the shape §2 asks for: what came up is one fact for everyone
+watching, typed once; who said it is a fact about a league.
 
 ### Tables
 
@@ -112,6 +130,22 @@ the three are in no particular order and nothing scores them differently.
 no need to disallow a top three, and the column stays for symmetry with
 `entries`.
 
+**`series_guesses`** — `id, player_id, slot (1-2), guess_text, guess_key,
+submitted_at, is_late, is_disallowed`
+Two rows per player, for the series (RULES §6). Unique on `(player_id, slot)`
+and on `(player_id, guess_key)`. **Two columns for one answer:** `guess_text` is
+what the player typed and is never edited by anyone; `guess_key` is the GM's
+canonical form and is what scoring counts. Unifying them is scoring-relevant —
+"madeleines" becoming "madeleine" can move somebody from +5 to +2 — so the
+original stays on screen beside it and the edit is auditable.
+
+**`guess_hits`** — `id, season_id, guess_key, episode_id, entered_at`
+One row per guess that came up, keyed on the canonical form so one tick covers
+every player holding it. Unique on `(season_id, guess_key)`: **a guess pays
+once**, and that constraint is the whole of the rule. `season_id` is
+denormalised from the episode because the constraint needs the season as its
+scope.
+
 **`season_settings`** — `season_id, top_picks_lock_at`
 ⚠️ **`top_picks_lock_at` is dead.** It stored the moment the top three lock,
 which RULES §5 defines as episode 2's own deadline — so it was a second date
@@ -168,6 +202,12 @@ v_episode_results_public
                      --   "voided row = Nobody won it", which is the one
                      --   distinction the UI must not collapse. No deadline
                      --   gate: a result is a fact about the episode.
+
+v_guess_scores       -- per player per bake guess: how many in their LEAGUE
+                     --   hold it, the episode it came up in, and 5/2/0.
+                     --   Feeds v_episode_scores' guess_points. NOT granted.
+v_series_guesses_public
+                     -- everyone's two, gated on episode 1's deadline
 ```
 
 `v_standings` gives the current position only. **Movement** — where you stood
@@ -176,12 +216,20 @@ that view nor `v_series_bonus` carries a rank of its own
 ([src/lib/scores.js](src/lib/scores.js)). That is the only scoring arithmetic
 anywhere in `src/`, and it is about ordering, not points.
 
-**Two of these views are deliberately ungranted** — `v_prediction_scores` and
-`v_penalties`. They are internal steps computed from `entries` with no deadline
-filter of their own, safe only because the views built on them aggregate the
-individual picks away. Anything the UI needs from them travels out through
-`v_episode_scores` instead, which is why the penalty reasons are aggregated into
-a column there rather than the browser reading `v_penalties` directly.
+**Three of these views are deliberately ungranted** — `v_prediction_scores`,
+`v_penalties` and `v_guess_scores`. The first two are internal steps computed
+from `entries` with no deadline filter of their own, safe only because the views
+built on them aggregate the individual picks away. Anything the UI needs from
+them travels out through `v_episode_scores` instead, which is why the penalty
+reasons are aggregated into a column there rather than the browser reading
+`v_penalties` directly.
+
+`v_guess_scores` is the starker case: it names the guesser beside the guess with
+no gate at all, so granting it would publish everyone's guesses from the moment
+they were typed. `v_episode_scores` takes a **number** from it and nothing else,
+and the words travel out through `v_series_guesses_public`, which carries the
+gate. One secret, one gate — the reason `guess_key` is not appended to
+`v_episode_scores` the way `penalties` was.
 
 One consequence worth knowing before editing any of them: **`create or replace
 view` may only append columns to the end of the list.** Re-ordering means
@@ -210,8 +258,20 @@ protection — anyone can open devtools and read the network response.
 The rule:
 
 > **The anon (browser) key gets `SELECT` on nothing but reference data and
-> deadline-passed views. It never gets `SELECT` on `predictions`, `entries` or
-> `top_picks` directly.**
+> views that have already passed their reveal. It never gets `SELECT` on
+> `predictions`, `entries`, `top_picks`, `series_guesses` or `guess_hits`
+> directly.**
+
+There are now **three** reveals, all on the same kind of clock, and each fails
+closed on a null date: this week's picks at the episode's own `deadline_at`, the
+bake guesses at **episode 1's** `deadline_at`, and the top three at **episode
+2's**. One shape, three episodes.
+
+Deriving each from an episode's deadline rather than storing a date — or hanging
+one off a button — is the point. `deadline_at` follows `air_date` through
+schema.sql's trigger, so there is nothing for a GM to remember and nothing that
+can drift. The bake guess gated on `live_at` for about an hour and that was a
+bug; §14 records it.
 
 | Who | Reads how |
 |-----|-----------|
@@ -314,6 +374,12 @@ people will be watching on the sofa with their phone in hand, so this is
   `v_top_picks_public`, added for it, since `v_series_bonus` carries points only
   and `v_baker_stats` a count per baker. Empty until episode 2's deadline, and
   it says which of the two reasons applies rather than showing a blank.
+- **Bake guess board** — ✅ built in phase 8. Everyone's two, in standings
+  order, with hits marked and the week they landed. It shares the top three
+  board's markup on purpose: the two are the same shape of thing, a
+  once-per-series commitment per player, and they read as a pair. Empty until
+  **episode 1 goes live** — a third gate on a third clock — and it says which of
+  the reasons applies rather than showing a blank.
 - **Stats strip** — ✅ built in phase 6. Five cards, **bakers first then
   players**: the week's favourite for Star Baker, the most-written-off baker
   still in the tent, the lone call (something exactly one person got right), the
@@ -414,7 +480,41 @@ means retyping it one-handed. Then tabs:
   needs the episode they left in, which is why the leaving result fills it in
   for you — but the control stands on its own, because bakers also leave for
   reasons that were never an elimination.
-- **Leagues** — create and manage parallel leagues; set the default.
+- **Guesses** — ✅ **built.** Everyone's two bakes, grouped by canonical
+  wording with the holders named under each. Two jobs at two different times:
+  tidy the wordings once, in the window between episode 1's deadline and
+  episode 1 airing, then tick whatever came up each week.
+
+  A **season** tab despite being full of people, because `guess_hits` is keyed
+  on the season — one tick covers every league, exactly like a result. What is
+  per-league is how much it pays, and that arrives per player from SQL. Before
+  episode 1's deadline it shows a count and not one word: the GM plays too, and
+  has two guesses of their own still to make.
+- **Leagues** — ✅ **built.** Add a league with a name and a link, see how many
+  players each has, move the default, archive and bring back. No delete: it
+  cascades through players to every entry, prediction and top three at once.
+
+  Last in the tab bar, because a league is set up once and then left alone
+  while Live is read at speed in a dark room.
+
+**Two kinds of tab, and the panel says which is which.** Live, Episodes, Bakers
+and Guesses are about the **season** — one cast, one set of episodes, one set of
+results, shared by every league playing it (§2). Entries and Players are about a
+**league**, and those two alone carry a league picker under the episode one. A
+selector sitting above the Live tab would imply that entering Star Baker affects
+one league and not the others, which is the opposite of how this is built, and
+episode night is the wrong moment to install that idea.
+
+With several leagues running, Entries and Players group their rosters under
+league names rather than listing everyone in the season flat, and each Entries
+group carries its own *"3 of 8 in"* — one count across every league is a number
+about nobody. The picker shows even with a single league, so it is not a control
+that first appears on the evening it matters.
+
+The filtering is done in the browser, not in `api/gm.js`: `state` already
+returns every player in the season, the panel does not poll, and a server-side
+scope would mean every write action carrying the right `leagueId` or quietly
+answering with somebody else's roster. `src/pages/gm/leagueScope.js` holds it.
 
 ---
 
@@ -427,6 +527,14 @@ Two endpoints. Everything is a `POST` with an `action` field, like worm-street's
 server-side.
 Built: `login` · `state` · `savePicks` · `saveTopPicks` · `confirm`.
 To come: `saveAvatar` (phase 7).
+
+`savePicks` carries **two** things: the week's predictions and, while episode 1
+is still open, the two bake guesses. They travel in one request so that there is
+one set of lateness and lock rules rather than two that can drift — the guesses
+lock on episode 1's ordinary ladder, through the same `lockState` call. It also
+means one submission gets one lateness stamp: a request carrying only guesses
+would re-stamp the entry and mark this week's picks late for an edit that was
+never about them.
 
 `saveEntry` is where the lateness rules live, and all of it is server-side:
 
@@ -455,8 +563,45 @@ of your three would otherwise collide with a row the same edit is about to move.
 worm-street).
 
 Built: `state` · `setCategory` · `setEpisode` · `goLive` · `toggleDisallow` ·
-`unlockEntry` · `upsertPlayer` · `generateCode` · `upsertBaker`.
-To come: `createLeague`.
+`unlockEntry` · `upsertLeague` · `upsertPlayer` · `generateCode` ·
+`upsertBaker` · `setGuess` · `setGuessHit`.
+
+The last two split the bake guess the same way `episode_results` is split:
+`setGuess` says what a guess **is** (its canonical wording, or that it is struck
+out), `setGuessHit` says what **happened** (this wording came up, in this
+episode). Neither awards a point — `v_guess_scores` applies the tiers — so a
+game described as "manual" still needs no manual-points column. Re-ticking a key
+in a different episode **moves** the hit rather than adding one, because the
+unique constraint guarantees a guess pays once and the alternative is fixing a
+mis-tap in SQL on episode night.
+
+`upsertLeague` replaced the `createLeague` this section used to promise, for the
+same reason `upsertBaker` and `upsertPlayer` are shaped that way: creating and
+editing a league differ only in whether an id came with the request. Three
+things it enforces that the schema cannot:
+
+- **Slugs are normalised, not validated.** "The Proving Drawer" becomes
+  `the-proving-drawer`, and a typed slug goes through the same funnel. The
+  result has to match the `/league/<slug>` pattern in `src/App.jsx` — a league
+  whose slug the router rejects exists with no way to link to it, which is a
+  thing you discover only after sending the link round. Uniqueness is **global**
+  rather than per season, because a URL carries no season with it.
+- **The default can be moved but never switched off**, and the first league in a
+  season takes it automatically. It is what someone opening `/` with no code
+  sees, and a season with none makes that landing page arbitrary. Moving it is
+  clear-then-set: `leagues_one_default_per_season` permits exactly one, so the
+  other order is rejected outright by the index, and this order fails towards a
+  moment with no default rather than a moment with two.
+- **The default league cannot be archived** — `/` has to land somewhere. The
+  panel says so on a disabled button rather than hiding the control, because an
+  absent button reads as a missing feature and the only league in a new season
+  is always the default.
+
+⚠️ **Archiving is a display change, not a lock.** `v_leagues_public` carries
+`where is_active`, so an archived league drops off the dashboard while its data
+stays exactly where it is — but `api/player.js` finds a player by their code
+alone, with no `is_active` check, so its players can still sign in at `/play`
+and submit. Archive a finished league, not one you want to close.
 
 `upsertBaker` holds an invariant the schema does not: `eliminated` always
 carries an `eliminated_episode` and every other status carries none, because
@@ -622,6 +767,7 @@ before we're finished.
 | **5** | ✅ `/` dashboard — chart, leaderboard, results grid, prediction wall, and the series recap from §5. **No SQL**: every view it needs was already granted, so there is nothing to paste. | showable |
 | **6** | ✅ `/bakers`, top-three picks and series bonuses (picker on `/play`, board on `/`), the stats strip, and `/rules`. The top three adds `v_top_picks_public` and gates `v_baker_stats.in_top_threes` — **paste `views.sql`, `rls.sql` and `smoke_test.sql` again**; nothing else in the phase needed SQL | — |
 | **7** | Avatar builder with your friend's SVGs; visual design pass | — |
+| **8** | ✅ **The bake guess** — two bakes per player, named before episode 1, ticked weekly by the GM and scored 5/2/0 in SQL. Adds `series_guesses` and `guess_hits`, so **paste `schema.sql` first**, then `views.sql`, `rls.sql` and `smoke_test.sql`. See §14 | — |
 
 **Minimum to run week 1: phases 0–4.** The dashboard can arrive in week 2 without
 losing any data — results are recorded either way and the chart back-fills.
@@ -662,6 +808,230 @@ Vercel hobby. A custom domain, if you ever want one, is ~£10/year — otherwise
 
 ---
 
+## 14. The bake guess — built
+
+✅ **Phase 8, built on 2026-09-09.** Elena's idea, worked through and redesigned
+the same day once the first version turned out to be spoilable. RULES §6 is the
+canonical rulebook version; this section is the architecture and the reasoning.
+
+Adds two tables and two views, so the paste order for this one is
+**`schema.sql` → `views.sql` → `rls.sql` → `smoke_test.sql`** — schema first,
+unusually, because the views have nothing to read without the tables.
+
+### The game
+
+**Once per series, before episode 1**, every player names **two bakes** they
+think will come up — "madeleine", "croquembouche", "choux". Free text, invented
+by the player. A guess pays out the week it appears, once:
+
+| Who said it | If it comes up |
+|---|---:|
+| Only that player | **+5** |
+| Exactly two players | **+2 each** |
+| Three or more | **0** |
+| It never comes up | **0** |
+
+Maximum 10 for a perfect pair — meaningful beside the top three's 15 and a good
+week's 13, without dominating.
+
+### Why once per series, and why before episode 1
+
+**The first design was per-episode and it does not work.** Each week's teaser
+and episode description between them pretty much state what is going to be
+baked, so a guess made after the previous episode is barely a guess at all.
+
+Timing fixes that, not a rule: **a teaser can only spoil the next episode, so a
+commitment made once for the whole series is structurally unspoilable.** That is
+why this borrows the top three's shape.
+
+It locks **before episode 1**, though, where the top three deliberately locks
+after. The top three needs you to have watched everyone bake; this needs the
+opposite. Nothing about episode 1 helps you guess the series' vocabulary, and
+locking at episode 2 would leave episode 1's challenges already public — either
+a freebie or a carve-out. Locking with the first weekly picks means all ten
+episodes are live, the guess is completely blind, and week 1 has something to
+do. It also keeps week 2 from carrying both this and the top three.
+
+### Locked and revealed at episode 1's deadline
+
+The same instant, and the same shape as the top three one episode later: the
+guesses lock and go public at episode 1's `deadline_at`, where the three lock
+and go public at episode 2's. Fail-closed on a null deadline, no new machinery.
+
+**This first gated on `live_at`, and that was a bug worth recording**, because
+`live_at` still looks like the more precise answer to "has episode 1 aired?"
+It is stamped only by the Go live button and cleared by Take it back — and Take
+it back was the *only* route from `live` to `complete`, so every episode reached
+"over" with a null `live_at` and the board emptied exactly when the episode
+finished. Elena found it within minutes of the first paste. Two fixes went in:
+the Episodes tab can now reach Complete directly from Live (which is the right
+behaviour regardless — "take it back" means *it was never on air*), and the gate
+moved to `deadline_at`, which follows `air_date` through schema.sql's trigger
+and depends on no button at all.
+
+**What the old design bought, and what losing it costs.** The gap between lock
+and reveal was the GM's private window to unify wordings. It is gone: the GM now
+sees the list at the same moment as everyone else. That is survivable because
+the board publishes `guess_text` — what the player typed, which nothing ever
+edits — and never `guess_key`. Unifying moves points, not words, and no points
+can land until a guess is ticked, which is during episode 1 at the earliest. So
+the GM still has the same few hours; they are simply not private.
+
+**What it costs that is real:** RULES §6's late-guess warning now applies to
+LATE as well as VERY LATE. Anyone submitting after the deadline can see what
+everybody took and pick something nobody has. The answer is the same as before —
+`is_disallowed` and the GM's judgement — and the rules say so.
+
+### The GM ticks; SQL still scores
+
+Each week the GM marks which guesses came up. **This is a fact being recorded,
+not a score being awarded** — the same shape as `episode_results`, where the GM
+says what happened and the views work out what it is worth.
+
+That distinction is why this design needs **no manual-points column**. An
+earlier draft of this section proposed one; it is not needed, the scoring stays
+in SQL, and `smoke_test.sql` can assert the tiers like everything else. The §2
+boundary holds with no exception at all.
+
+Two properties fall out:
+
+- **The weekly job shrinks.** A guess pays once, so a hit resolves it and it
+  drops off the list. Week 1 is a scan of ~15 distinct guesses; by week 6 it is
+  a handful.
+- **These points have an honest episode**, unlike the top-three bonus.
+  `v_series_bonus` carries no episode, which is why it can never appear on the
+  chart or produce movement. A guess hits *in a specific week*, so it steps the
+  line and moves the table on the night it lands — the live-scoring feel the
+  series bonus cannot have.
+
+### Store what they typed AND what it was unified to
+
+The one thing to get right, because unifying is **scoring-relevant**: turning
+someone's "madeleines" into "madeleine" can move them from sole (+5) to shared
+(+2).
+
+- **`guess_text`** — what the player typed. Never edited.
+- **`guess_key`** — the GM's canonical version. This is what scoring counts, and
+  what the weekly tick list groups by.
+
+The wall shows what they wrote, the scoring uses the key, and the edit is
+auditable. One column, and it removes a whole class of argument at a watch-along
+where the GM is also a player.
+
+### What was built
+
+- [x] **`series_guesses`** — `id, player_id, slot (1-2), guess_text, guess_key,
+      submitted_at, is_late, is_disallowed`. Unique on `(player_id, slot)` and
+      on `(player_id, guess_key)` — two different guesses, the same way
+      `top_picks` enforces three different bakers.
+- [x] **`guess_hits`** — `season_id, guess_key, episode_id`. One row per guess
+      that came up, keyed on the canonical form so one tick covers every player
+      holding it. Unique on `(season_id, guess_key)`: a guess pays once, and
+      that constraint IS the rule rather than a check the view performs.
+- [x] **`v_series_guesses_public`** — gated on episode 1's `deadline_at`,
+      granted in `rls.sql`. Carries the hit and its episode as well as the
+      words, so the board needs one query rather than two.
+- [x] **`v_guess_scores`** — per player per guess: `holders`, the hit's
+      `episode_id`, and `points` by the table above. **Not granted** — it names
+      the guesser beside the guess with no gate of its own.
+- [x] **`v_episode_scores`** — `guess_points` appended, and the spine widened
+      (see below).
+- [x] **`/play`** — two text inputs while episode 1 is open, a receipt
+      afterwards, saved through `savePicks`.
+- [x] **GM panel** — a Guesses tab, grouped by key with the holders named, an
+      editable `guess_key` per holder, a strike-out switch, and one tick per key.
+- [x] **Dashboard** — `GuessBoard`, everyone's two with hits and the week they
+      landed.
+- [x] **`smoke_test.sql`** — the reveal gate fails closed on both a null and a
+      future deadline *and* genuinely opens; it does not depend on `live_at`;
+      the 5/2/0 tiers; a guess pays once, not once per episode; holders counted
+      per league; and a struck-out guess leaving the holders count.
+- [x] **`RULES.md` §6 and `/rules`** — the tiers, the lock, and the two
+      questions below, settled.
+
+### Three decisions taken while building it
+
+**`is_disallowed` on `series_guesses`, which this section did not originally
+ask for.** The section said a VERY LATE guess would be handled "by hand"; with
+no column, by hand meant in the SQL editor. It is the same switch `entries` and
+`top_picks` carry, the GM panel has a Strike out button for it, and it is
+filtered out of the **holders count** as well as the payout — a struck guess
+that still counted towards the tier would silently drop everybody else from +5
+to +2, which is the opposite of "as if it were never made".
+
+**Holders are counted per LEAGUE, not per season.** Seasons are shared by every
+league playing them (§2), so a season-wide count would let a stranger in another
+league take a player's +5 away and turn it into +2. Points belong to a league
+because the leaderboard does. Note this is the **opposite** call from
+Still-open #10, where the baker stats count season-wide — the difference is that
+those are a stat and these are points.
+
+**`v_episode_scores` carries `guess_points` and NOT the guess itself.** That view
+is granted to anon with no gate of its own, so a `guess_key` column there would
+be a second way to read the guesses on a different clock from
+`v_series_guesses_public`'s. One secret, one gate. The words reach the dashboard
+through the gated view and reach a player's own panel through `/api/player`,
+which is authenticated. It is the one place this design departs from the
+penalties precedent, where a `penalties` jsonb *does* ride along — penalties are
+not a secret.
+
+### The spine of `v_episode_scores` had to widen
+
+`v_episode_scores` was built on `entries`, one row per player per episode they
+entered. A guess pays in the week it comes up, and that may be a week the player
+made no picks in — so an entries-only spine had nowhere to put the points and
+would have dropped them silently.
+
+It is now `entries UNION the weeks a guess paid in`. Only a guess that actually
+**paid** pulls in a new row: a guess that came up but was too popular to score
+has nothing to deliver, and a 0-point row for somebody who sat that week out
+would draw them on the chart for an episode they were never in. `lateness` is
+therefore nullable on those rows — there is no entry, so there is no submission
+to be late — and every reader already treats it as a flag rather than a value.
+
+### Not going in the code
+
+**VERY LATE entries should not score this category** — RULES §2.5 already warns
+they can see everyone else's picks, and here that would let someone guarantee a
+unique answer. Elena will handle it by hand rather than in code.
+
+### Deliberately not built: task names
+
+The GM ticks guesses and does **not** record each episode's actual challenge
+names. Attribution still works — a tick says "madeleine came up in episode 3",
+so the recap can say Priya called it — but the *task names themselves*
+("Signature: 12 identical madeleines") are not captured.
+
+That is a separate wish, worth having for the recap in its own right, and
+nothing here should be shaped so as to prevent adding it later.
+
+### The two open questions, settled
+
+Both were Elena's to answer and both are now in RULES §6. They turned out to
+have **one** answer between them, which is why neither needed a line of SQL:
+
+1. **Does the showstopper count?** ✅ **Yes — all three challenges count**, but
+   the showstopper counts *by the name it is given*.
+2. **Do elements within a showstopper count?** ✅ **No — whole bakes only.**
+
+The thing that collapsed them into one rule: **the challenge titles are stated
+explicitly on the programme**, so the title is the record. A guess hits when the
+word is in the announced title of the signature, the technical or the
+showstopper. A chocolate egg sitting on a bigger showstopper is not a hit;
+"Chocolate Egg Showstopper" is.
+
+That is a far more checkable rule than "whole bakes only" on its own — it
+replaces a judgement about what counts as a bake with a question that has one
+answer per challenge, which matters because the GM is ruling live while also
+playing.
+
+It also settles the "cake" case, which was noted as probably falling out of
+those two and does: a guess must be a specific bake, ingredient or technique,
+and the GM may reject one before the lock — but the tiers mostly handle it
+anyway, since an obvious guess attracts company and pays nothing.
+
+---
+
 ## Still open
 
 | # | Question |
@@ -671,6 +1041,19 @@ Vercel hobby. A custom domain, if you ever want one, is ~£10/year — otherwise
 | 3 | ✅ **Colophon** — settled and shipped: *"This game is a home-made version of the unofficial [Fantasy Bake Off](https://fantasybakeoff.co.uk/). Built with Claude."* **Unofficial**, not official: that site states it is not affiliated with the programme, Channel 4 or Love Productions. |
 | 4 | **How many players?** Sets the identity-palette size — 16 hues is comfortable, beyond ~20 they stop being tellable apart even beside a name. |
 | 5 | A display face for headings (DESIGN.md §9) — must be freely licensable |
+| 6 | ✅ **The bake guess (§14): does the showstopper count?** **Yes — all three challenges**, the showstopper by the name it is given. |
+| 7 | ✅ **The bake guess (§14): do elements within a showstopper count?** **No — whole bakes only.** The challenge titles are stated explicitly on the programme, so the guess has to appear in the announced title. That one observation settled both questions and kept the whole ruling out of the code — it is RULES §6 and `/rules`, and no SQL depends on it. |
+| 8 | **A league switcher on the dashboard?** Everyone already lands on their own table; this would let them look at another without knowing its slug. `resolveLeague` already fetches every league, so it costs no query. The trade is discoverability: it turns other leagues from "you need the link" into "they are listed". Not a leak — `v_leagues_public` is granted and lists them all already — but a change of tone. |
+| 9 | **Should archiving a league lock its players out?** Today it does not: `api/player.js` finds a player by their code alone. Right if archiving means "last year's league", wrong if it means "these people are out". Two lines in `player.js` either way. |
+| 10 | **The stats strip's baker numbers count every league in the season**, since `v_public_predictions` carries rows for all of them and `v_baker_stats` is keyed on the baker with no league filter. Invisible with one league; with three, "written off" shows the same number on every league's dashboard. Arguably "written off by half the country" is the better stat, but it should be a decision. Fixing it means a league filter on a view keyed the wrong way, and a `views.sql` paste. |
 
 **Settled since v0.2:** the league is **In The Oven** (`in-the-oven`), and Elena
 is both GM and player (`players.is_gm`).
+
+**Multiple leagues, decided while building the GM side:** results stay per
+season, so a second league costs nothing on the night; there is no delete, only
+archiving; the default may be moved but not switched off; and a person in two
+leagues is two players with two codes, because `players.league_id` is a single
+FK and the browser stores one code — so one device is one league identity. One
+GM password still covers every league (§9): **multiple leagues is not multiple
+GMs**, and anyone given the password can rewrite every result in all of them.

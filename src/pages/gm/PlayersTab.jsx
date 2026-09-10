@@ -5,19 +5,29 @@
 // someone has lost theirs (TECH_PLAN §13). They are issued by the server and
 // never generated in the browser — a credential the client invents is a
 // credential the client controls.
+//
+// One of the two league-scoped tabs. With several leagues running, the roster
+// is grouped under their names rather than listed flat — see gm/leagueScope.js.
 
 import { useState } from 'react'
 import { Panel } from '../../components/Panel.jsx'
 import { Avatar } from '../../components/Avatar.jsx'
 import { Confirm } from './Confirm.jsx'
+import { ALL, groupByLeague } from './leagueScope.js'
 
-export function PlayersTab({ state, send, busy }) {
+export function PlayersTab({ state, send, busy, leagueId = ALL }) {
   const { players, leagues } = state
   const colours = state.colours ?? []
   const [adding, setAdding] = useState(false)
 
-  const takenIn = (leagueId) =>
-    players.filter((p) => p.league_id === leagueId).map((p) => (p.colour_hex ?? '').toLowerCase())
+  // Deliberately over EVERY player and not the ones on screen: a colour is
+  // unique within its league whether or not that league is being looked at.
+  const takenIn = (id) =>
+    players.filter((p) => p.league_id === id).map((p) => (p.colour_hex ?? '').toLowerCase())
+
+  const groups = groupByLeague(players, leagues, leagueId)
+  const headed = groups.length > 1
+  const shown = groups.reduce((n, g) => n + g.people.length, 0)
 
   return (
     <Panel head="Players">
@@ -27,23 +37,38 @@ export function PlayersTab({ state, send, busy }) {
         &ldquo;velvetcrumb&rdquo; both work.
       </p>
 
-      {players.length === 0 && (
-        <p className="notice">Nobody yet. Add the first player below.</p>
+      {shown === 0 && (
+        <p className="notice">
+          {leagueId === ALL
+            ? 'Nobody yet. Add the first player below.'
+            : 'Nobody in this league yet. Add the first player below.'}
+        </p>
       )}
 
-      <div className="roster">
-        {players.map((player) => (
-          <PlayerRow
-            key={player.id}
-            player={player}
-            leagues={leagues}
-            colours={colours}
-            taken={takenIn(player.league_id)}
-            busy={busy}
-            send={send}
-          />
-        ))}
-      </div>
+      {groups.map(({ league, people }) => (
+        <section className="roster-section" key={league.id}>
+          {headed && (
+            <p className="roster-group">
+              {league.name}
+              <span className="muted">
+                {' · '}{people.length} player{people.length === 1 ? '' : 's'}
+              </span>
+            </p>
+          )}
+          <div className="roster">
+            {people.map((player) => (
+              <PlayerRow
+                key={player.id}
+                player={player}
+                colours={colours}
+                taken={takenIn(player.league_id)}
+                busy={busy}
+                send={send}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
 
       <hr className="rule" />
 
@@ -52,6 +77,9 @@ export function PlayersTab({ state, send, busy }) {
           leagues={leagues}
           colours={colours}
           takenIn={takenIn}
+          // Whichever league is being looked at, so filtering to one and then
+          // adding somebody does not quietly put them in another.
+          startIn={leagueId === ALL ? null : leagueId}
           busy={busy}
           send={send}
           onDone={() => setAdding(false)}
@@ -67,7 +95,9 @@ export function PlayersTab({ state, send, busy }) {
 
 // ------------------------------------------------------------
 
-function PlayerRow({ player, leagues, colours, taken, busy, send }) {
+// The league is not repeated on the row: when several are in view the group
+// heading above carries it, and when one is, the picker in the shell does.
+function PlayerRow({ player, colours, taken, busy, send }) {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState(() => shape(player))
 
@@ -95,8 +125,6 @@ function PlayerRow({ player, leagues, colours, taken, busy, send }) {
           <div className="small muted">
             <span className="code-chip">{player.code}</span>
             {player.is_gm && ' · GM'}
-            {leagues.length > 1 &&
-              ` · ${leagues.find((l) => l.id === player.league_id)?.name ?? ''}`}
           </div>
         </div>
       </div>
@@ -161,11 +189,13 @@ function PlayerRow({ player, leagues, colours, taken, busy, send }) {
 
 // ------------------------------------------------------------
 
-function NewPlayer({ leagues, colours, takenIn, busy, send, onDone }) {
-  const [leagueId, setLeagueId] = useState(leagues[0]?.id ?? '')
+function NewPlayer({ leagues, colours, takenIn, startIn, busy, send, onDone }) {
+  const [leagueId, setLeagueId] = useState(startIn ?? leagues[0]?.id ?? '')
   const taken = takenIn(leagueId)
   const [name, setName] = useState('')
-  const [colour, setColour] = useState(() => colours.find((c) => !takenIn(leagues[0]?.id).includes(c)) ?? '')
+  const [colour, setColour] = useState(
+    () => colours.find((c) => !takenIn(startIn ?? leagues[0]?.id).includes(c)) ?? ''
+  )
 
   // Switching league can make the chosen colour unavailable — a colour is only
   // unique within a league, so the same hex may be free in one and taken in

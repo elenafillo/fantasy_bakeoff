@@ -9,11 +9,17 @@ failed run can be fixed and re-run.
 | 2 | [views.sql](views.sql) | Scoring, and the browser's entire read surface |
 | 3 | [rls.sql](rls.sql) | Locks every table, grants the views |
 | 4 | [seed.sql](seed.sql) | Categories, the season, the league, ten episodes |
-| 5 | [smoke_test.sql](smoke_test.sql) | Proves scoring and the deadline gate work |
+| 5 | [smoke_test.sql](smoke_test.sql) | Proves scoring and the reveal gates work |
 
 `seed.sql` finishes with a row of counts. `smoke_test.sql` returns a row reading
 **SMOKE TEST PASSED**, or an error naming the rule that broke. Run it after
 **any** change to `views.sql`.
+
+**Re-pasting after a change usually means `views.sql` → `rls.sql` → smoke test.
+Phase 8 is the exception**: the bake guess added two TABLES, so `schema.sql` has
+to go first or `views.sql` has nothing to read. It is `create table if not
+exists` throughout, so re-pasting it is safe on a live database and changes
+nothing that is already there.
 
 The verdict is a `SELECT`, not a `RAISE NOTICE`: notices don't appear in the
 Supabase SQL editor, so a passing run would be indistinguishable from one that
@@ -32,6 +38,20 @@ where ep.deadline_at is not null    -- fails closed: no deadline = not public
 
 That is the whole of "nobody sees your picks before the deadline". Hiding
 predictions in the UI would be defeated by anyone opening devtools.
+
+**That shape now appears three times, on three different clocks**, and each one
+fails closed on a null date:
+
+| View | Gate | Protects |
+|---|---|---|
+| `v_public_predictions` | episode's own `deadline_at` | this week's picks |
+| `v_top_picks_public` | **episode 2's** `deadline_at` | whose three is whose |
+| `v_series_guesses_public` | **episode 1's** `deadline_at` | everyone's bake guesses |
+
+One shape, three episodes. Each is **derived from an episode** rather than
+stored or hung off a button, so it follows `air_date` through the deadline
+trigger and there is nothing for a GM to remember. The bake guess briefly gated
+on `live_at` instead — see TECH_PLAN §14 for why that was a bug.
 
 **The views are security-definer on purpose.** They read their tables as the
 view owner, which is how they can expose a slice of a table the browser has no
@@ -88,5 +108,7 @@ a small `login_attempts` table keyed by IP.
   fills `deadline_at` in automatically at 18:00 Europe/London, British Summer
   Time handled. Until then the deadline is NULL and that episode's predictions
   stay private.
-- **`top_picks_lock_at`** in `season_settings` — 18:00 on the Tuesday before
-  episode 2.
+- **Nothing else.** `season_settings.top_picks_lock_at` used to be listed here
+  and is **dead** — the top three lock at episode 2's own `deadline_at`, derived
+  rather than stored, so there is no second date to keep in step. See the
+  warning on it in [schema.sql](schema.sql), and do not wire it back up.

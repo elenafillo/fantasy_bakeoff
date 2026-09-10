@@ -3,8 +3,9 @@
 -- ============================================================
 -- Paste the whole file into the Supabase SQL editor and run it.
 --
---   a row reading "SMOKE TEST PASSED"  → scoring, the deadline gate and the
---                                        three result states all behave.
+--   a row reading "SMOKE TEST PASSED"  → scoring, all three reveal gates, the
+--                                        three result states and the bake
+--                                        guess's tiers all behave.
 --   an ERROR                           → the message names the rule that broke.
 --
 -- The verdict is a SELECT after the rollback, deliberately. RAISE NOTICE does
@@ -28,9 +29,10 @@ do $$
 declare
   v_season uuid;
   v_league uuid;
+  v_league2 uuid;
   baker_a uuid; baker_b uuid; baker_c uuid; baker_d uuid;
   ep1 uuid; ep2 uuid; ep3 uuid;
-  p1 uuid; p2 uuid; p3 uuid;
+  p1 uuid; p2 uuid; p3 uuid; p4 uuid;
   e1 uuid; e2 uuid; e3 uuid;
   got int;
   got_bool boolean;
@@ -313,10 +315,227 @@ begin
     'about the episode, not picks. Got %s. If it is 0, the deadline gate has been '
     'copied in from v_public_predictions.', got);
 
+  -- ---- THE BAKE GUESS --------------------------------------------------
+  -- RULES §6. Two bakes per player, named once before episode 1; a guess pays
+  -- the week it comes up, ONCE, and only if few enough people said it.
+  --
+  -- Deliberately last in this file: the hits below add points to
+  -- v_episode_scores and v_standings, which nearly every assertion above reads.
+
+  -- P1 alone says madeleine. P2 and P3 both say croquembouche. All three say
+  -- cake — the obvious guess that pays nobody, which is the tier that stops a
+  -- one-word answer being worth anything.
+  insert into series_guesses (player_id, slot, guess_text, guess_key) values
+    (p1, 1, 'Madeleine',     'madeleine'),
+    (p1, 2, 'Cake',          'cake'),
+    (p2, 1, 'Croquembouche', 'croquembouche'),
+    (p2, 2, 'cake',          'cake'),
+    (p3, 1, 'croquembouche', 'croquembouche'),
+    (p3, 2, 'CAKE',          'cake');
+
+  -- ---- THE REVEAL GATE -------------------------------------------------
+  -- The load-bearing filter a third time, on a third episode. The bake guesses
+  -- lock at EPISODE 1's deadline and are revealed at the same moment, exactly
+  -- as the top three lock and reveal at episode 2's. Without the gate people
+  -- read each other's guesses while still deciding their own — and a guess is
+  -- worth +5 precisely for being one that nobody else thought of.
+  --
+  -- Episode 1's deadline has already passed in these fixtures, so take it away
+  -- to test the closed case, then put it back — the disallowed-guess assertion
+  -- further down reads v_series_guesses_public and needs the gate open again.
+  --
+  -- Setting deadline_at directly does not disturb schema.sql's trigger: that
+  -- only derives a deadline when the same write also changed air_date, and this
+  -- one leaves it alone.
+  -- EVERY QUERY BELOW IS SCOPED TO THE FIXTURE PLAYERS. v_series_guesses_public
+  -- carries no season_id or league_id — like v_top_picks_public, its callers
+  -- filter by the player ids from v_standings — so an unscoped count here reads
+  -- the REAL league's guesses too and fails for reasons that have nothing to do
+  -- with this test. It did exactly that on the first run.
+  update episodes set deadline_at = null where id = ep1;
+
+  select count(*) into got from v_series_guesses_public where player_id in (p1, p2, p3);
+  assert got = 0, format(
+    'LEAK: episode 1 has no deadline, so it must FAIL CLOSED, but %s guess(es) are '
+    'public. Check that v_series_guesses_public still tests `deadline_at is not null`.',
+    got);
+
+  -- A deadline still to come is the other closed case, and the one that is true
+  -- for every episode in the real database today.
+  update episodes set deadline_at = now() + interval '1 day' where id = ep1;
+
+  select count(*) into got from v_series_guesses_public where player_id in (p1, p2, p3);
+  assert got = 0, format(
+    'LEAK: episode 1''s deadline has not passed but %s guess(es) are public.', got);
+
+  -- Now let the reveal happen, and check that it genuinely does — a gate welded
+  -- shut would pass both assertions above for entirely the wrong reason.
+  update episodes set deadline_at = now() - interval '1 day' where id = ep1;
+
+  select count(*) into got from v_series_guesses_public where player_id in (p1, p2, p3);
+  assert got = 6, format(
+    'Episode 1''s deadline has passed, so all 6 guesses should be public, got %s.', got);
+
+  -- The gate must NOT depend on the GM having pressed Go live. It did once, and
+  -- the bug that followed was invisible until an episode finished: Take it back
+  -- was the only route from live to complete, and it clears live_at, so every
+  -- episode reached "over" with the board empty. Episode 1 has no live_at here
+  -- and the guesses must be public regardless.
+  select (live_at is null) into got_bool from episodes where id = ep1;
+  assert got_bool,
+    'Episode 1 has no live_at and its guesses must be public anyway. If this fails, '
+    'the fixture changed; if the count above fails while this passes, the gate has '
+    'been put back on live_at.';
+
+  select guess_text into got_text from v_series_guesses_public where player_id = p1 and slot = 1;
+  assert got_text = 'Madeleine', format(
+    'The board shows what the player TYPED, never the GM''s canonical key — '
+    'unifying is scoring-relevant, so the edit has to stay auditable. Got %s.',
+    coalesce(got_text, '<null>'));
+
+  -- ---- THE TIERS -------------------------------------------------------
+  -- Nothing has come up yet, so nothing pays. A guess that never appears is
+  -- worth nothing, which is the difference between this view and one that
+  -- simply counts holders.
+  -- Scoped to this season for the same reason as above: the real league's
+  -- guesses are in this view too, and one of them may well have been ticked.
+  select coalesce(sum(points), 0) into got from v_guess_scores where season_id = v_season;
+  assert got = 0, format(
+    'No guess has been ticked yet, so nothing may pay, got %s.', got);
+
+  -- The GM ticks what came up. Madeleine in episode 1, croquembouche in
+  -- episode 2, cake in episode 1.
+  insert into guess_hits (season_id, guess_key, episode_id) values
+    (v_season, 'madeleine',     ep1),
+    (v_season, 'croquembouche', ep2),
+    (v_season, 'cake',          ep1);
+
+  select points into got from v_guess_scores where player_id = p1 and guess_key = 'madeleine';
+  assert got = 5, format('The sole holder of a guess that comes up scores +5, got %s.', got);
+
+  select points into got from v_guess_scores where player_id = p2 and guess_key = 'croquembouche';
+  assert got = 2, format('One of exactly two holders scores +2, got %s.', got);
+  select points into got from v_guess_scores where player_id = p3 and guess_key = 'croquembouche';
+  assert got = 2, format('The other of exactly two holders scores +2 as well, got %s.', got);
+
+  select points into got from v_guess_scores where player_id = p1 and guess_key = 'cake';
+  assert got = 0, format(
+    'Three holders is too many and pays nobody, got %s. This tier is the whole '
+    'reason an obvious one-word guess is not worth taking.', got);
+
+  -- ---- A GUESS PAYS ONCE -----------------------------------------------
+  -- Not once per episode. The rule is the unique constraint on
+  -- (season_id, guess_key), so assert that the constraint REFUSES rather than
+  -- trusting the view to have summed correctly.
+  begin
+    insert into guess_hits (season_id, guess_key, episode_id)
+      values (v_season, 'madeleine', ep2);
+    assert false,
+      'Madeleine already came up in episode 1. A second hit must be refused, or a '
+      'guess pays again every week the bake reappears.';
+  exception when unique_violation then
+    null;
+  end;
+
+  select coalesce(sum(guess_points), 0) into got from v_episode_scores where player_id = p1;
+  assert got = 5, format(
+    'P1''s madeleine pays 5 ONCE across the whole series, got %s.', got);
+
+  -- ---- FOLDED INTO THE WEEK IT LANDED ----------------------------------
+  -- These points have an honest episode, unlike the top-three bonus, so they
+  -- step the chart and move the table on the night.
+  select guess_points into got from v_episode_scores where player_id = p1 and episode_id = ep1;
+  assert got = 5, format('Madeleine came up in episode 1, so it pays in episode 1, got %s.', got);
+
+  select points into got from v_episode_scores where player_id = p1 and episode_id = ep1;
+  assert got = 16, format(
+    'P1''s episode 1 is 11 from picks plus 5 from the guess = 16, got %s.', got);
+
+  -- P2 never entered episode 2, so there is no entry row to hang this on. An
+  -- entries-only spine would silently drop the points.
+  select count(*) into got from entries where player_id = p2 and episode_id = ep2;
+  assert got = 0, 'Fixture check: P2 is supposed to have no entry for episode 2.';
+
+  select points into got from v_episode_scores where player_id = p2 and episode_id = ep2;
+  assert got = 2, format(
+    'P2 made no picks in episode 2, but their croquembouche came up in it and must '
+    'still pay 2, got %s. If there is no row at all, v_episode_scores is still '
+    'built on entries alone.', got);
+
+  -- A guess that came up but paid nothing brings nobody in. Cake hit in episode
+  -- 1 and was worth 0, and P3 holds cake but has no live entry that week — their
+  -- episode-1 entry is disallowed. So episode 1 must still have no row for them:
+  -- an 0-point row would draw them on the chart for a week they were never in,
+  -- and would quietly undo "a disallowed entry does not appear in scoring".
+  select count(*) into got from v_episode_scores where player_id = p3 and episode_id = ep1;
+  assert got = 0, format(
+    'A guess worth nothing must not create a scoring row, got %s.', got);
+
+  -- ---- DISALLOWING ONE GUESS -------------------------------------------
+  -- The GM's switch, and the only way a guess leaves scoring — RULES §6 leaves
+  -- a VERY LATE guesser to be handled by hand, and this is the hand.
+  --
+  -- It must come out of the HOLDERS COUNT as well as the payout. If a struck
+  -- guess still counted towards the tier, one disallowed row would quietly drop
+  -- everybody else from +5 to +2, which is the opposite of "as if it were never
+  -- made" (RULES §2.5).
+  update series_guesses set is_disallowed = true
+    where player_id = p3 and guess_key = 'croquembouche';
+
+  select points into got from v_guess_scores where player_id = p2 and guess_key = 'croquembouche';
+  assert got = 5, format(
+    'With P3''s croquembouche struck out, P2 is the only holder left and scores +5, '
+    'got %s. If it is still 2, disallowed guesses are being counted as holders.', got);
+
+  select count(*) into got from v_guess_scores where player_id = p3 and guess_key = 'croquembouche';
+  assert got = 0, format(
+    'A disallowed guess must not appear in scoring at all, got %s row(s).', got);
+
+  -- It stays on the public board, flagged, so it can be shown struck through —
+  -- the same choice v_public_predictions makes for a disallowed entry.
+  select count(*) into got from v_series_guesses_public
+    where player_id = p3 and guess_key = 'croquembouche' and is_disallowed;
+  assert got = 1, format(
+    'A disallowed guess is still public and still flagged, so the board can strike '
+    'it through rather than quietly dropping a row. Got %s.', got);
+
+  -- Disallowing an ENTRY is a different switch from disallowing a GUESS. P3's
+  -- episode-1 entry is struck out and scores nothing, but their guesses were
+  -- never part of that entry.
+  update series_guesses set is_disallowed = false
+    where player_id = p3 and guess_key = 'croquembouche';
+
+  select total_points into got from v_standings where player_id = p3;
+  assert got = 2, format(
+    'P3''s episode-1 entry is disallowed and pays 0, but their croquembouche is a '
+    'separate commitment and still pays 2, got %s.', got);
+
+  -- ---- HOLDERS ARE COUNTED PER LEAGUE ----------------------------------
+  -- Seasons are shared by every league playing them (TECH_PLAN §2), so a
+  -- season-wide count would let a stranger in another league — someone the
+  -- player has never met and is not competing against — take their +5 away.
+  insert into leagues (season_id, name, slug)
+    values (v_season, 'Smoke Test League Two', 'smoke-test-league-two') returning id into v_league2;
+  insert into players (league_id, display_name, code_norm, colour_hex)
+    values (v_league2, 'P Four', 'smoketestfour', '#2a78d6') returning id into p4;
+  insert into series_guesses (player_id, slot, guess_text, guess_key)
+    values (p4, 1, 'Madeleine', 'madeleine');
+
+  select points into got from v_guess_scores where player_id = p1 and guess_key = 'madeleine';
+  assert got = 5, format(
+    'P4 is in a different league, so P1 is still the only person in THEIRS holding '
+    'madeleine and still scores +5, got %s. If it is 2, holders are being counted '
+    'across the whole season instead of the league.', got);
+
+  select points into got from v_guess_scores where player_id = p4 and guess_key = 'madeleine';
+  assert got = 5, format(
+    'P4 is the sole holder in their own league, so the same guess pays them +5 too, '
+    'got %s.', got);
+
 end $$;
 
 rollback;
 
 -- Reached only if every assertion above held — a failure aborts the script
 -- before this line.
-select 'SMOKE TEST PASSED — scoring, the deadline gate and the three result states behave. Nothing was written.' as result;
+select 'SMOKE TEST PASSED — scoring, all three reveal gates, the three result states and the bake guess tiers behave. Nothing was written.' as result;
