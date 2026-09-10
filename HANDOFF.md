@@ -35,7 +35,7 @@ late September 2026), so nothing is time-pressured yet.
 | 6 — `/bakers`, `/rules`, top-three picks, stats | ✅ **Done.** All four: `/bakers`, the top three (picker on `/play`, board on `/`), the stats strip and `/rules`. SQL applied and the smoke test passes. |
 | 7 — avatar builder, visual polish | ⬜ Not started, but **the spec and the art brief are written** — DESIGN §11, [ASSETS.md](ASSETS.md), `src/avatar/TEMPLATE.svg` |
 | 8 — the bake guess | ✅ **Done.** Two bakes per player before episode 1, ticked weekly by the GM, scored 5/2/0 in SQL. **Two new tables**, so `schema.sql` is pasted first this time — see below and TECH_PLAN §14 |
-| — multiple leagues, GM half | ✅ **Done**, outside the phase numbering. The Leagues tab, `upsertLeague`, and league scoping on Entries and Players. **No SQL, no new grant, nothing to paste.** The dashboard switcher is the piece left — TECH_PLAN Still-open #8 |
+| — multiple leagues, GM half | ✅ **Done**, outside the phase numbering. The Leagues tab, `upsertLeague`, and league scoping on Entries and Players. **No SQL, no new grant, nothing to paste.** The dashboard switcher is built too — a button per league at the foot of the page, scoped to the season so the demo leagues stay off it |
 
 Live database state: league **In The Oven** (`in-the-oven`, default), 2 players,
 the real 12-baker cast with names, bios and photos, 10 episodes with no air
@@ -564,6 +564,24 @@ header explains the split.
 deadline, and `v_public_predictions` fails closed on exactly that. The panel
 says which of the two reasons applies rather than showing a blank.
 
+**A finished week keeps its wall for a few days** — `pickWall` in
+`src/lib/dashboard.js`, added after this phase. Marking an episode complete is
+what moves everyone on, and next week's picks are sealed until its own deadline,
+so the wall used to go blank for most of a week the moment you finished typing
+results — before half the league had looked at it. It now stays up until **a day
+before the next deadline**, then hands over to the sealed panel and its
+countdown. The band names the episode on every wall (`The wall · Episode 1`) and
+a notice above the table says it is last week's; the stats strip's two
+pick-based cards follow the same week, since the lone call is a thing you read
+*against* the wall. An episode with no deadline of its own has no "day before"
+to count to, so last week's holds until the schedule lands.
+
+It is the one panel that reads the **device** clock rather than the server's, and
+`pickWall`'s header is explicit about why that is allowed here: it chooses
+between two sets of picks the server has already published, so a wrong clock
+shifts the changeover and can never reveal a pick early. Once the next episode's
+`predictions_public` is true, that wins regardless.
+
 ### What phase 5 does not cover
 
 - **Top Three board.** ✅ Built in phase 6 — see that section below. It needed
@@ -579,11 +597,11 @@ says which of the two reasons applies rather than showing a blank.
 
 **Leagues** — the GM half is now built (see the GM panel section above), and the
 dashboard has resolved leagues since this phase: `/league/<slug>`, then the
-league behind the stored code, then `is_default`. **The one piece still missing
-is a switcher on the dashboard** — today you swap by knowing the slug.
-`resolveLeague` already fetches every league and throws all but two away, so it
-would cost no extra query; it needs one line there to return the list.
-TECH_PLAN's Still-open table, #8, has the trade.
+league behind the stored code, then `is_default`. **The switcher is now built
+too**: `src/components/LeagueSwitcher.jsx`, under the recap, one button per
+league. `resolveLeague` returns the list as `siblings` — the leagues sharing the
+season of the one on screen, which is what keeps the demo leagues off it. No
+extra query, no SQL. TECH_PLAN §5 and Still-open #8.
 
 ---
 

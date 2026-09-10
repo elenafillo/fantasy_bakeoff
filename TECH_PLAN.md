@@ -46,10 +46,9 @@ Leagues own only their own players, entries and standings.
 picker over the two tabs that are about a league rather than the season (§5).
 The dashboard has resolved leagues since phase 5 (`/league/<slug>`, then the
 league behind your stored code, then `is_default`), so people already land on
-their own table without being asked which one they are in. **The one piece not
-built is a league switcher on the dashboard** — today you swap by knowing the
-slug. `resolveLeague` already fetches every league and throws all but two away,
-so that costs no extra query when it is wanted.
+their own table without being asked which one they are in. **The dashboard now
+ends in a league switcher** — one button per league playing the same season, so
+looking at another table no longer means knowing its slug (Still-open #8).
 
 One league is still all that is running.
 
@@ -360,6 +359,14 @@ regardless of who's logged in on that device. When a logged-in player is looking
 at a league that isn't theirs, the page says so quietly rather than silently
 showing a stranger's table.
 
+The foot of the page lists **every league playing the same season** as buttons
+(`src/components/LeagueSwitcher.jsx`), with the one on screen marked. Season, not
+"every active league": the demo leagues hang off throwaway seasons of their own
+and every league made in the GM panel goes into the active one, so the same rule
+that keeps another series' tables off the list keeps the demos off it too. It
+costs no query — `resolveLeague` was already fetching every league — and with a
+single league in the season it does not appear at all.
+
 Making the dashboard the landing page (rather than a login wall) means someone
 can be sent the link, immediately see the game, and *then* be told their code.
 
@@ -383,6 +390,11 @@ people will be watching on the sofa with their phone in hand, so this is
   table — players down, categories across — because that scales to sixteen
   players where cards don't, and because reading *down* a column is what people
   do with it. It is the one place other than the chart that scrolls sideways.
+  **It is the one panel that does not follow the current episode**: a week marked
+  complete keeps its wall until a day before the next deadline, named in the
+  panel's band and said in a notice above the table, because the picks are the
+  thing people missed if they weren't watching live. `pickWall` in
+  `src/lib/dashboard.js`; the stats built from picks trail with it.
 - **Series recap** — episodes × categories, who won what. ✅ built in phase 5;
   it is where last night's ticks live once an episode is marked complete, since
   the results grid follows the same "current episode" rule as `/play`.
@@ -1067,7 +1079,7 @@ anyway, since an obvious guess attracts company and pays nothing.
 | 5 | A display face for headings (DESIGN.md §9) — must be freely licensable |
 | 6 | ✅ **The bake guess (§14): does the showstopper count?** **Yes — all three challenges**, the showstopper by the name it is given. |
 | 7 | ✅ **The bake guess (§14): do elements within a showstopper count?** **No — whole bakes only.** The challenge titles are stated explicitly on the programme, so the guess has to appear in the announced title. That one observation settled both questions and kept the whole ruling out of the code — it is RULES §6 and `/rules`, and no SQL depends on it. |
-| 8 | **A league switcher on the dashboard?** Everyone already lands on their own table; this would let them look at another without knowing its slug. `resolveLeague` already fetches every league, so it costs no query. The trade is discoverability: it turns other leagues from "you need the link" into "they are listed". Not a leak — `v_leagues_public` is granted and lists them all already — but a change of tone. |
+| 8 | ✅ **A league switcher on the dashboard?** **Yes** — built, at the foot of the page (§5). Other leagues go from "you need the link" to "they are listed", which is the point: everyone can see how the other tables are doing. Scoped to the season on screen, which keeps the demo leagues off it. Not a leak — `v_leagues_public` is granted and lists them all already. |
 | 9 | **Should archiving a league lock its players out?** Today it does not: `api/player.js` finds a player by their code alone. Right if archiving means "last year's league", wrong if it means "these people are out". Two lines in `player.js` either way. |
 | 10 | **The stats strip's baker numbers count every league in the season**, since `v_public_predictions` carries rows for all of them and `v_baker_stats` is keyed on the baker with no league filter. Invisible with one league; with three, "written off" shows the same number on every league's dashboard. Arguably "written off by half the country" is the better stat, but it should be a decision. Fixing it means a league filter on a view keyed the wrong way, and a `views.sql` paste. |
 

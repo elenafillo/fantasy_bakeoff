@@ -11,6 +11,7 @@ import { SeriesRecap } from '../components/SeriesRecap.jsx'
 import { TopThreeBoard } from '../components/TopThreeBoard.jsx'
 import { GuessBoard } from '../components/GuessBoard.jsx'
 import { StatsStrip } from '../components/StatsStrip.jsx'
+import { LeagueSwitcher } from '../components/LeagueSwitcher.jsx'
 import { buildStats } from '../lib/stats.js'
 import { Link } from '../lib/Link.jsx'
 
@@ -143,7 +144,11 @@ export default function Dashboard({ slug }) {
             standings: live.standings,
             bakerNames: reference.bakerNames,
             bakers: reference.bakers,
-            episode: live.currentEpisode,
+            // The wall's week, not the page's. The two cards built from picks —
+            // the favourite and the lone call — are about what is on the wall a
+            // screen above, so they trail with it for the days it holds last
+            // week's (pickWall).
+            episode: live.wallEpisode,
           })
         : [],
     [live, reference]
@@ -191,6 +196,12 @@ export default function Dashboard({ slug }) {
   const categories = categoriesFor(reference.categories, episode)
   const thisWeek = live.results.filter((r) => r.episode_id === episode?.id)
   const hasBonus = live.standings.some((r) => r.bonus_points !== 0)
+
+  // Usually the same episode. For a few days after one is marked complete the
+  // wall keeps showing it while everything else moves on (pickWall).
+  const wall = live.wallEpisode
+  const wallCategories = categoriesFor(reference.categories, wall)
+  const wallResults = live.results.filter((r) => r.episode_id === wall?.id)
 
   return (
     <>
@@ -241,13 +252,14 @@ export default function Dashboard({ slug }) {
       <ResultsGrid categories={categories} results={thisWeek} episode={episode} />
 
       <PredictionWall
-        categories={categories}
+        categories={wallCategories}
         predictions={live.predictions}
         standings={live.standings}
         bakerNames={reference.bakerNames}
-        results={thisWeek}
+        results={wallResults}
         scores={live.scores}
-        episode={episode}
+        episode={wall}
+        nextEpisode={wall?.id !== episode?.id ? episode : null}
         meId={resolved.you}
       />
 
@@ -281,6 +293,8 @@ export default function Dashboard({ slug }) {
         results={live.results}
         categories={reference.categories}
       />
+
+      <LeagueSwitcher leagues={resolved.siblings} shownId={league.id} />
     </>
   )
 }

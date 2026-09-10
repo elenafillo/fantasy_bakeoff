@@ -54,6 +54,42 @@ export function categoriesFor(categories, episode) {
   return categories.filter((c) => c.applies_to === 'both' || c.applies_to === want)
 }
 
+/**
+ * Which episode's picks the wall shows. Usually the current one — but a week
+ * that has just been marked complete keeps its wall until a day before the next
+ * episode's deadline.
+ *
+ * Dashboard-only, and not a copy of anything in api/: /play has no wall. It
+ * exists because marking an episode complete is what moves everyone on
+ * (pickCurrent), and the next episode's picks stay sealed until its own
+ * deadline — so without this the wall went blank for most of a week the moment
+ * the GM finished typing results, before half the league had had a proper look.
+ *
+ * THIS READS THE DEVICE CLOCK, where the two gates in v_episodes_public
+ * deliberately don't, and it is allowed to because it only ever chooses between
+ * two sets of picks the server has already made public. A wrong clock moves the
+ * changeover by however wrong it is; it can never show a pick early. And the
+ * server's answer still wins where it has one: once the next episode's picks
+ * are public, they are the wall, whatever this device thinks the time is.
+ */
+export function pickWall(episodes, currentEpisode, now) {
+  if (!currentEpisode || currentEpisode.predictions_public) return currentEpisode
+
+  // A finished week whose picks never went public (it had no deadline) has no
+  // wall to keep up.
+  const previous = episodes.find((e) => e.number === currentEpisode.number - 1)
+  if (!previous?.predictions_public) return currentEpisode
+
+  // No deadline on the next one means no "day before" to count to yet, so last
+  // week's stays up until the schedule says otherwise.
+  if (!currentEpisode.deadline_at) return previous
+  return now < new Date(currentEpisode.deadline_at).getTime() - ONE_DAY_MS
+    ? previous
+    : currentEpisode
+}
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000
+
 // ------------------------------------------------------------
 // Which league
 // ------------------------------------------------------------
@@ -61,9 +97,10 @@ export function categoriesFor(categories, episode) {
  * In order: an explicit `/league/<slug>`, then the league belonging to the code
  * in localStorage, then the one flagged `is_default` (TECH_PLAN §5).
  *
- * Every league is fetched rather than filtered on, because the answer needs two
- * of them: the one being shown, and the viewer's own, so the page can say
- * quietly that they are not the same. v_leagues_public is a handful of rows.
+ * Every league is fetched rather than filtered on, because the answer needs
+ * several of them: the one being shown, the viewer's own, so the page can say
+ * quietly that they are not the same, and the rest of its season for the
+ * switcher at the bottom. v_leagues_public is a handful of rows.
  */
 export async function resolveLeague(slug) {
   const leagues = await supabase.query('v_leagues_public', {
@@ -74,11 +111,19 @@ export async function resolveLeague(slug) {
   const who = storedWho() ?? (await recoverWho())
   const yours = who ? leagues.find((l) => l.slug === who.leagueSlug) ?? null : null
   const asked = slug ? leagues.find((l) => l.slug === slug) ?? null : null
+  const league = asked ?? yours ?? leagues.find((l) => l.is_default) ?? leagues[0] ?? null
 
   return {
-    league: asked ?? yours ?? leagues.find((l) => l.is_default) ?? leagues[0] ?? null,
+    league,
     yours,
     you: who?.playerId ?? null,
+    // The switcher's list: the leagues playing the same season as the one on
+    // screen. Scoping by season rather than by name is what keeps the demo
+    // leagues off it — each hangs off a throwaway season of its own, while
+    // every league made in the GM panel goes into the active one (upsertLeague
+    // in api/gm.js). It is also the right rule on its own terms: a table from
+    // another series, with another cast, is nothing to compare against.
+    siblings: league ? leagues.filter((l) => l.season_id === league.season_id) : [],
     // An explicit slug that matches nothing. Worth saying out loud rather than
     // silently showing the default league, because the URL was somebody's
     // deliberate choice — usually a league put on a screen in another room.
@@ -162,8 +207,9 @@ export async function fetchLive(league) {
     supabase.query('v_episodes_public', {
       select:
         'id,number,theme,air_date,deadline_at,live_at,bingo_prompt,status,is_final,' +
-        // Both computed in the view against the server's clock, so nothing on
-        // this page decides for itself what "now" means.
+        // Both computed in the view against the server's clock, so neither gate
+        // hangs on this device's idea of "now". pickWall does read the device
+        // clock, and its header says why that one is allowed to.
         'predictions_public,is_live',
       params: { season_id: `eq.${league.season_id}` },
       order: 'number.asc',
@@ -189,6 +235,10 @@ export async function fetchLive(league) {
   // reads a `.current` property as a ref access, and quietly gives up on
   // memoising anything that touches one.
   const currentEpisode = pickCurrent(episodes)
+  // Picked here rather than in render because it reads the clock, and a
+  // component body must not. Re-picked on every poll, so the wall changes over
+  // within one interval of the moment.
+  const wallEpisode = pickWall(episodes, currentEpisode, Date.now())
   const ids = standings.map((r) => r.player_id)
   const inLeague = `in.(${ids.join(',')})`
 
@@ -201,10 +251,11 @@ export async function fetchLive(league) {
           params: { player_id: inLeague },
         })
       : [],
-    ids.length && currentEpisode
+    // The wall's episode, which is not always the current one (pickWall).
+    ids.length && wallEpisode
       ? supabase.query('v_public_predictions', {
           select: 'player_id,episode_id,category,baker_id,lateness,is_disallowed,confirmed',
-          params: { episode_id: `eq.${currentEpisode.id}`, player_id: inLeague },
+          params: { episode_id: `eq.${wallEpisode.id}`, player_id: inLeague },
         })
       : [],
     // Empty until episode 2's deadline, by design — v_top_picks_public applies
@@ -240,7 +291,9 @@ export async function fetchLive(league) {
       : [],
   ])
 
-  return { episodes, currentEpisode, standings, results, scores, predictions, topPicks, guesses }
+  return {
+    episodes, currentEpisode, wallEpisode, standings, results, scores, predictions, topPicks, guesses,
+  }
 }
 
 // ------------------------------------------------------------

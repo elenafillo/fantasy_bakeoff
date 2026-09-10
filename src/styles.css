@@ -526,6 +526,13 @@ textarea.input { resize: vertical; line-height: 1.4; }
 .dash-head .pill { margin-left: auto; flex: none; }
 .dash-note { margin: .7rem 0 0; }
 
+/* The league switcher at the foot of the dashboard. The league on screen gets
+   an ink edge rather than a colour, the same "this one" mark as a chosen swatch
+   or a full chart line. */
+.league-switch { display: flex; flex-wrap: wrap; gap: .5rem; }
+.league-switch a { text-decoration: none; }
+.league-switch [aria-current='page'] { color: var(--ink); border-color: var(--ink); cursor: default; }
+
 /* A word beside a name: YOU, and nothing else so far. */
 .tag {
   margin-left: .4rem;

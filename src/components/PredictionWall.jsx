@@ -34,33 +34,47 @@ import { useCountdown } from '../lib/useCountdown.js'
  * and a wrong pick recedes because it costs nothing. Here a cell is a name in a
  * box with no room for a sentence, so the tint would be carrying the meaning on
  * its own, and colour never does that (DESIGN §5).
+ *
+ * `episode` IS NOT ALWAYS THE CURRENT ONE. A week marked complete keeps its
+ * wall until the day before the next deadline (pickWall, src/lib/dashboard.js),
+ * and `nextEpisode` is set for exactly those days.
  */
 export function PredictionWall({
-  categories, predictions, standings, bakerNames, results, scores, episode, meId,
+  categories, predictions, standings, bakerNames, results, scores, episode, nextEpisode, meId,
 }) {
   const countdown = useCountdown(episode?.deadline_at)
 
   if (!episode) return null
 
+  // The episode rides in the band on both faces of the panel. Now that the
+  // wall can be showing last week's picks, every wall has to say which week.
+  const head = `The wall · Episode ${episode.number}`
+
   if (!episode.predictions_public) {
     return (
-      <Panel head="The wall">
-        <h2>Everyone’s picks are sealed</h2>
+      <Panel head={head}>
+        <h2>Everyone’s picks are hidden</h2>
         <p className="muted">
           {episode.deadline_at
             ? `They all appear here the moment the deadline passes — ${countdown.label.toLowerCase()}.`
             : `Episode ${episode.number} has no deadline yet, so nobody can be late for it and nobody’s picks are public. They appear here as soon as the schedule is set.`}
-        </p>
-        <p className="small muted">
-          Nobody can see them before then — not other players, not the GM, and
-          not by opening the developer tools. The rule lives in the database.
         </p>
       </Panel>
     )
   }
 
   return (
-    <Panel head="The wall">
+    <Panel head={head}>
+      {/* Said in words, not left to the number in the band: everything above
+          this panel has already moved on to the next episode, so a wall that
+          hasn't needs to say so where the eye lands. */}
+      {nextEpisode && (
+        <p className="notice">
+          These are everyone&rsquo;s picks for Episode {episode.number} (which is
+          now finished). They will come down the day before
+          episode {nextEpisode.number}.
+        </p>
+      )}
       <div className="scroll-x wall-scroll">
         <table className="wall-table">
           <thead>

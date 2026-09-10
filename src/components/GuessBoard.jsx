@@ -49,11 +49,10 @@ export function GuessBoard({ guesses, standings, episodeOne }) {
 
   return (
     <Panel head="The bake guess">
-      <h2 className="th-board-head">Everyone&rsquo;s two</h2>
+      <h2 className="th-board-head">Everyone&rsquo;s two bakes</h2>
       <p className="small muted">
         Named before episode 1. <strong>+5</strong> if you were the only one who
-        said it, <strong>+2</strong> if exactly two of you did — paid the week it
-        comes up.
+        said it, <strong>+2</strong> if exactly two of you did - nothing otherwise.
       </p>
 
       <ul className="th-board">

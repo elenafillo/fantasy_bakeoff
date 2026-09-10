@@ -24,12 +24,12 @@ export function TopThreeBoard({ topPicks, standings, episodeTwo }) {
   if (byPlayer.size === 0) {
     return (
       <Panel head="The top three">
-        <h2 className="th-board-head">Everyone&rsquo;s three</h2>
+        <h2 className="th-board-head">Everyone&rsquo;s top three</h2>
         <p className="muted">
           {!episodeTwo
             ? 'There is no episode 2 yet, so nobody has committed to a top three.'
             : episodeTwo.deadline_at
-              ? 'Everyone’s three appear here the moment episode 2’s deadline passes.'
+              ? 'Everyone’s top three appear here the moment episode 2’s deadline passes.'
               : 'Episode 2 has no deadline yet, so nobody can be late for it and nobody’s three are public. They appear here as soon as the schedule is set.'}
         </p>
       </Panel>
