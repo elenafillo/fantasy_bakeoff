@@ -96,11 +96,15 @@ to keep in step and nothing a GM has to remember to press.
 
 That last part is not decorative. `v_series_guesses_public` first gated on
 episode 1's **`live_at`**, which reads like the more precise answer to "has
-episode 1 aired?" and is not: it is stamped only by **Go live** and cleared by
-**Take it back**, and Take it back used to be the only route from `live` to
-`complete`. So every episode reached "over" with a null `live_at` and the guess
-board emptied exactly when the episode finished. **A gate hanging off a button
-somebody has to remember to press is not a gate.**
+episode 1 aired?" and was not — because `live_at` was then stamped by a **Go
+live** button and cleared by **Take it back**, and Take it back was the only
+route from `live` to `complete`. So every episode reached "over" with a null
+`live_at` and the guess board emptied exactly when the episode finished. **A
+gate hanging off a button somebody has to remember to press is not a gate.**
+
+That finding is what killed the button. `live_at` is now derived from the air
+date at 20:00 and the gate is a deadline, so neither depends on anyone
+remembering anything — see the Episodes tab notes below.
 
 **2. Rules live on the server, never in the UI.**
 `api/player.js` recomputes lateness and the lock from the server clock on every
@@ -132,7 +136,7 @@ api/
                   against episode 2, via the same lockState call. savePicks
                   carries the bake guesses too, against episode 1, for the
                   same reason: one ladder, not two.
-  gm.js           state · setCategory · setEpisode · goLive · toggleDisallow ·
+  gm.js           state · setCategory · setEpisode · toggleDisallow ·
                   unlockEntry · upsertLeague · upsertPlayer · generateCode ·
                   upsertBaker · setGuess · setGuessHit. Password every call.
   health.js       env-var presence check (booleans only, never values)
@@ -216,7 +220,23 @@ silently voids the category, mid-episode, unnoticed. **Add another winner** adds
 a second select; two eliminations, two handshakes and a bingo catching three
 people are all normal.
 
-**Episodes** — theme, air date, deadline, bingo prompt, status, and Go live.
+**Episodes** — theme, air date, the two derived moments, bingo prompt, status.
+
+⚠️ **There is no Go live button, and that is deliberate.** The panel locks
+itself at **20:00 on the air date** (`live_at`, derived by the same trigger that
+sets the 18:00 deadline). The button was removed because RULES §2.5's promise —
+*"the panel locks when the episode starts"* — rested entirely on the GM
+remembering to press something, live, while watching television. Forget it and
+the panel never locks: someone can submit at 21:15 having watched the technical
+and be flagged only LATE, with nothing anywhere saying so. The same forgotten
+tap also left the dashboard polling at 30s through the one hour the 4s interval
+exists for.
+
+Both moments are **editable per episode** for a week that airs at an odd hour —
+"Take it back" became "move the time". And `status` lost its `live` value:
+whether an episode is on air is `live_at <= now()`, computed in
+`v_episodes_public.is_live` for the browser and from `serverNow` in the panel.
+**Only `complete` does anything** — it is what moves everyone on to next week.
 
 **Entries** — the roster for this episode: who has submitted, how late, the
 **Disallow** checkbox and **Open the door**. It lists *players*, not entries,
@@ -929,6 +949,19 @@ consequence: `lateness` is now **nullable** on that view. Every reader already
 treats it as a flag rather than a value, so null reads as "nothing to flag".
 
 ### Smaller things worth knowing
+
+**The guess section leaves `/play` once episode 1 is behind you** — hidden, not
+just locked. From episode 2 onwards it was a receipt for something settled weeks
+ago, sitting above the picks people actually opened the page for; the dashboard
+board tells that story better, with everyone else's beside yours. `guesses.open`
+in `api/player.js` is what decides it, and it means "episode 1 is the current
+episode", not "there are guesses".
+
+The consequence, and the reason the scorecard gained a line: **a guess pays in
+the week it comes up**, which may be a week whose picks all missed. Without it
+the big number would disagree with *"0 of 5 picks right"* and nothing on the
+page would account for it. `v_episode_scores.guess_points` feeds a **Bake
+guess** row into the split that previously only appeared for penalties.
 
 **The guesses save on the same request as the week's picks.** `savePicks`
 re-stamps the entry's lateness from the server clock on every call, so a

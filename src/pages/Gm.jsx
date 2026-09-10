@@ -9,6 +9,7 @@ import { BakersTab } from './gm/BakersTab.jsx'
 import { GuessesTab } from './gm/GuessesTab.jsx'
 import { LeaguesTab } from './gm/LeaguesTab.jsx'
 import { ALL, byLeagueOrder } from './gm/leagueScope.js'
+import { isOnAir } from './gm/time.js'
 
 /**
  * The GM control room.
@@ -220,7 +221,9 @@ function Console({ state, password, setState, onLock }) {
             {episodes.map((e) => (
               <option key={e.id} value={e.id}>
                 {e.number}. {e.theme || (e.is_final ? 'The final' : 'No theme yet')}
-                {e.status === 'live' ? ' · LIVE' : e.status === 'complete' ? ' · done' : ''}
+                {isOnAir(e, state.serverNow)
+                  ? ' · ON AIR'
+                  : e.status === 'complete' ? ' · done' : ''}
               </option>
             ))}
           </select>

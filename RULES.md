@@ -76,11 +76,15 @@ labelled:
 | When you submitted | Flag | Allowed? |
 |--------------------|------|----------|
 | Before 18:00 Tuesday | — | Always |
-| After the deadline, before the episode airs | **LATE** | Always |
-| After the episode has started airing | **VERY LATE** | **Only if the GM opens the door** |
+| Between 18:00 and 20:00 | **LATE** | Always |
+| After 20:00, once the episode is on air | **VERY LATE** | **Only if the GM opens the door** |
 
-- **The panel locks when the episode starts.** That is the default, and it is
-  what stops someone entering at 20:15 having already watched the technical.
+- **The panel locks itself at 20:00 on the air date**, when the episode goes
+  out. That is what stops someone entering at 20:15 having already watched the
+  technical, and it happens on its own — there is no button for the GM to
+  remember. Both moments come from the air date: 18:00 closes the picks, 20:00
+  closes the panel. If an episode airs at an odd hour the GM can move the lock,
+  the same way they can move a deadline.
 - The GM can **unlock a specific player for a specific week** — travelling,
   broken phone, genuine mishap. Anything submitted through that door is stamped
   **VERY LATE** on the entry and on the dashboard. It cannot be done quietly.

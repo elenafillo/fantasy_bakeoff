@@ -25,7 +25,9 @@ import { nameList, verdictFor } from '../lib/scores.js'
 export function ResultsGrid({ categories, results, episode }) {
   if (!episode) return null
 
-  const live = episode.status === 'live'
+  // Computed in v_episodes_public from the lock time, not a status somebody had
+  // to remember to set as the episode began.
+  const live = episode.is_live
 
   return (
     <Panel head={`Episode ${episode.number}${episode.theme ? ` · ${episode.theme}` : ''}`}>

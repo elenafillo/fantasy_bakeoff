@@ -48,7 +48,11 @@ export async function fetchScoreboard({ episodeId, episodeNumber, leagueId, play
     ? await supabase.query('v_episode_scores', {
         select:
           'player_id,episode_id,episode_number,points,pick_points,penalty_points,' +
-          'correct_count,picks_made,penalties',
+          // guess_points so the scorecard can explain a week where the picks
+          // missed but a bake guess came up. /play stops showing the guesses
+          // themselves after episode 1, so this line is the only thing on that
+          // page that accounts for the points.
+          'correct_count,picks_made,penalties,guess_points',
         params: { player_id: `in.(${ids.join(',')})` },
       })
     : []

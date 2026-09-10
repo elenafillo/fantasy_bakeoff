@@ -1,9 +1,9 @@
 // ============================================================
 // POST /api/gm — everything the GM does
 // ============================================================
-// Actions: state · setCategory · setEpisode · goLive · toggleDisallow ·
-//          unlockEntry · upsertLeague · upsertPlayer · generateCode ·
-//          upsertBaker · setGuess · setGuessHit
+// Actions: state · setCategory · setEpisode · toggleDisallow · unlockEntry ·
+//          upsertLeague · upsertPlayer · generateCode · upsertBaker ·
+//          setGuess · setGuessHit
 //
 // The password is compared against process.env.GM_PASSWORD on EVERY request.
 // There is no session and no token, deliberately: a session is a second thing
@@ -51,8 +51,6 @@ export default async function handler(req, res) {
         return await setCategory(res, body)
       case 'setEpisode':
         return await setEpisode(res, body)
-      case 'goLive':
-        return await goLive(res, body)
       case 'toggleDisallow':
         return await toggleDisallow(res, body)
       case 'unlockEntry':
@@ -543,6 +541,16 @@ const EPISODE_FIELDS = {
   bingo_prompt: 'text',
   air_date: 'date',
   deadline_at: 'instant',
+  // When the episode goes on air, and therefore THE HARD LOCK (RULES §2.5).
+  // Derived from air_date at 20:00 by schema.sql's trigger, and editable here
+  // for a week that airs at an odd hour — exactly like deadline_at above.
+  //
+  // This replaced a `goLive` action that stamped it with the server clock when
+  // the GM pressed a button. A rule that depends on somebody remembering to
+  // press a button mid-episode is not a rule; a derived timestamp cannot be
+  // forgotten. Clearing it means nobody is locked out, which is the same
+  // direction lockState already fails in for an episode with no schedule.
+  live_at: 'instant',
   status: 'status',
 }
 
@@ -600,9 +608,11 @@ function coerce(field, kind, raw) {
   if (kind === 'status') {
     const s = String(raw)
     if (!['upcoming', 'locked', 'complete'].includes(s)) {
-      // 'live' is missing on purpose: it is the one status with a side effect
-      // (live_at, the hard lock), so it is only reachable through goLive.
-      throw new HttpError(400, 'Status is upcoming, locked or complete — use Go live for live.')
+      // 'live' is missing on purpose, and now for a better reason than before:
+      // whether an episode is on air is `live_at <= now()`, computed wherever
+      // it is needed, so there is no stored status to set or to go stale. Only
+      // 'complete' is load-bearing — it is what moves everyone on to next week.
+      throw new HttpError(400, 'Status is upcoming, locked or complete.')
     }
     return s
   }
@@ -611,35 +621,26 @@ function coerce(field, kind, raw) {
 }
 
 // ------------------------------------------------------------
-// Go live — the hard lock
+// The hard lock, and why there is no longer a button for it
 // ------------------------------------------------------------
-// live_at is the boundary between LATE and locked-out, so this is the most
-// consequential button in the panel. Two rules:
+// `goLive` used to live here. It stamped live_at with the server clock and set
+// status to 'live', and it was the most consequential button in the panel —
+// live_at is the boundary between LATE and locked out (RULES §2.5).
 //
-//   * Going live twice does not re-stamp live_at. A second tap would move the
-//     boundary and could turn an entry that was accepted into one that should
-//     never have been.
-//   * It can be taken back, because the alternative to an undo is everyone
-//     locked out an hour early with no way back but SQL. Lateness already
-//     stamped on an entry stays: that is a record of when they submitted, not
-//     a status to be recalculated.
-
-async function goLive(res, body) {
-  try {
-    const season = await activeSeason()
-    const episode = await loadEpisode(season, body.episodeId)
-    const live = body.live !== false
-
-    const patch = live
-      ? { status: 'live', live_at: episode.live_at ?? new Date().toISOString() }
-      : { status: 'locked', live_at: null }
-
-    await restPatch('episodes', `id=eq.${episode.id}`, patch)
-    return res.status(200).json(await buildState({ episodeId: episode.id }))
-  } catch (err) {
-    return fail(res, err)
-  }
-}
+// It was removed because a rule that depends on somebody pressing a button
+// mid-episode is not a rule. Forget it and the panel never locks, so a player
+// could submit at 21:15 having watched the technical, flagged only LATE — and
+// nothing anywhere would say so. The same forgotten tap left the dashboard
+// polling every 30s through the one hour it exists for.
+//
+// live_at is now derived from air_date at 20:00 by schema.sql's trigger, the
+// same way deadline_at is derived at 18:00, and it is editable through
+// setEpisode for a week that airs at an odd hour. Two moments, one date,
+// neither of them forgettable. "Take it back" became "move the time".
+//
+// Whether an episode is on air is `live_at <= now()`, computed where it is
+// needed (v_episodes_public.is_live for the browser, serverNow for the panel),
+// so no status has to be set and none can go stale.
 
 // ------------------------------------------------------------
 // Bakers — the cast

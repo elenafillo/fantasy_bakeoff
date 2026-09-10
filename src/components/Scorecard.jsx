@@ -50,16 +50,28 @@ export function Scorecard({ categories, picks, bakerNames, results, week, positi
         ))}
       </div>
 
-      {/* The split is only worth showing when a penalty actually fired —
-          otherwise it restates the number already set in 40px type. Both halves
-          come from SQL; nothing here is added up. */}
-      {week && week.penalty_points !== 0 && (
+      {/* The split is only worth showing when something other than the picks
+          moved the number — otherwise it restates what is already set in 40px
+          type. Every part comes from SQL; nothing here is added up.
+
+          A BAKE GUESS PAYS IN THE WEEK IT COMES UP, which may be a week whose
+          picks all missed, so without this line the big number would disagree
+          with "0 of 5 picks right" and nothing on the page would explain it.
+          The guess itself is not named here: /play stops showing the guesses
+          once episode 1 is behind you (api/player.js), and the dashboard board
+          is where they live. This is the number, and where it came from. */}
+      {week && (week.penalty_points !== 0 || week.guess_points !== 0) && (
         <div className="score-sums">
           <div><span>Picks</span><span>{signed(week.pick_points)}</span></div>
-          <div className="cost">
-            <span>Penalties</span>
-            <span>{signed(week.penalty_points)}</span>
-          </div>
+          {week.penalty_points !== 0 && (
+            <div className="cost">
+              <span>Penalties</span>
+              <span>{signed(week.penalty_points)}</span>
+            </div>
+          )}
+          {week.guess_points !== 0 && (
+            <div><span>Bake guess</span><span>{signed(week.guess_points)}</span></div>
+          )}
           <div className="total"><span>This week</span><span>{week.points}</span></div>
         </div>
       )}

@@ -160,7 +160,11 @@ export async function fetchReference(league) {
 export async function fetchLive(league) {
   const [episodes, standings, results] = await Promise.all([
     supabase.query('v_episodes_public', {
-      select: 'id,number,theme,air_date,deadline_at,live_at,bingo_prompt,status,is_final,predictions_public',
+      select:
+        'id,number,theme,air_date,deadline_at,live_at,bingo_prompt,status,is_final,' +
+        // Both computed in the view against the server's clock, so nothing on
+        // this page decides for itself what "now" means.
+        'predictions_public,is_live',
       params: { season_id: `eq.${league.season_id}` },
       order: 'number.asc',
     }),

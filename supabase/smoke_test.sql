@@ -31,7 +31,7 @@ declare
   v_league uuid;
   v_league2 uuid;
   baker_a uuid; baker_b uuid; baker_c uuid; baker_d uuid;
-  ep1 uuid; ep2 uuid; ep3 uuid;
+  ep1 uuid; ep2 uuid; ep3 uuid; ep4 uuid;
   p1 uuid; p2 uuid; p3 uuid; p4 uuid;
   e1 uuid; e2 uuid; e3 uuid;
   got int;
@@ -314,6 +314,102 @@ begin
     'Episode 3 has no deadline, and its result must still be public: results are facts '
     'about the episode, not picks. Got %s. If it is 0, the deadline gate has been '
     'copied in from v_public_predictions.', got);
+
+  -- ---- THE TWO DERIVED MOMENTS -----------------------------------------
+  -- Picks close at 18:00 on the air date; the panel locks at 20:00 when the
+  -- episode goes on air. Both follow air_date through schema.sql's trigger.
+  --
+  -- The lock used to be a timestamp the GM stamped by pressing "Go live", which
+  -- made RULES §2.5's promise rest on somebody remembering to press a button
+  -- mid-episode. These assertions are what replaced that button.
+
+  insert into episodes (season_id, number, air_date, status)
+    values (v_season, 7, date '2026-10-06', 'upcoming') returning id into ep4;
+
+  select (deadline_at at time zone 'Europe/London')::time into got_text
+    from episodes where id = ep4;
+  assert got_text = '18:00:00', format(
+    'An air date must set the deadline to 18:00 UK, got %s.', coalesce(got_text, '<null>'));
+
+  select (live_at at time zone 'Europe/London')::time into got_text
+    from episodes where id = ep4;
+  assert got_text = '20:00:00', format(
+    'An air date must set the lock to 20:00 UK, got %s. If it is null, the trigger '
+    'is not deriving live_at and the panel will never lock by itself.',
+    coalesce(got_text, '<null>'));
+
+  -- Moving the date moves BOTH.
+  update episodes set air_date = date '2026-10-13' where id = ep4;
+  select (live_at at time zone 'Europe/London')::date into got_text
+    from episodes where id = ep4;
+  assert got_text = '2026-10-13', format(
+    'Moving the air date must move the lock with it, got %s.', coalesce(got_text, '<null>'));
+
+  -- An override set on its own is left alone: the date did not move, so there
+  -- is nothing to re-derive. This is the ordinary "this week airs at 21:00" edit.
+  update episodes set live_at = fbo_derive_live(air_date) + interval '1 hour' where id = ep4;
+  select (live_at at time zone 'Europe/London')::time into got_text
+    from episodes where id = ep4;
+  assert got_text = '21:00:00', format(
+    'Setting the lock time without touching the air date must stick, got %s.',
+    coalesce(got_text, '<null>'));
+
+  -- An override sent in the SAME statement as an air-date change also wins.
+  -- That is the escape hatch — move the episode and set its odd hour together —
+  -- and it is exactly how deadline_at has always behaved.
+  update episodes
+     set air_date = date '2026-10-20',
+         live_at  = fbo_derive_live(date '2026-10-20') + interval '1 hour'
+   where id = ep4;
+  select (live_at at time zone 'Europe/London')::time into got_text
+    from episodes where id = ep4;
+  assert got_text = '21:00:00', format(
+    'A lock time set in the same write as the air date must win over the derived '
+    'one, got %s.', coalesce(got_text, '<null>'));
+
+  -- But an override set EARLIER does not survive a later date change on its
+  -- own. Moving an episode to another day re-derives both moments, because
+  -- "20:00 on the new day" is a better answer than "21:00 carried over from the
+  -- old one" — and because the deadline has always worked this way, so the two
+  -- must not diverge.
+  --
+  -- 2026-10-27 is past the BST→GMT switch on the 25th, so this also proves the
+  -- named time zone is doing its job: 20:00 LOCAL either side of the change.
+  update episodes set air_date = date '2026-10-27' where id = ep4;
+  select (live_at at time zone 'Europe/London')::time into got_text
+    from episodes where id = ep4;
+  assert got_text = '20:00:00', format(
+    'Moving the air date alone must re-derive the lock to 20:00 on the new day, '
+    'got %s. If it is 21:00, an old override is outliving the date it belonged '
+    'to; if it is 19:00 or 21:00 after the clocks change, the conversion is not '
+    'going through Europe/London.', coalesce(got_text, '<null>'));
+
+  -- Clearing the air date clears both, so an episode with no schedule locks
+  -- nobody out — the same direction lockState fails in.
+  update episodes set live_at = null where id = ep4;
+  update episodes set air_date = null where id = ep4;
+  select count(*) into got from episodes
+    where id = ep4 and deadline_at is null and live_at is null;
+  assert got = 1, 'Clearing the air date must clear both derived moments.';
+
+  -- ---- IS IT ON AIR ----------------------------------------------------
+  -- Computed from the lock time, never stored: a status somebody has to set is
+  -- a status that goes stale.
+  update episodes set live_at = now() - interval '1 hour', status = 'locked' where id = ep4;
+  select is_live into got_bool from v_episodes_public where id = ep4;
+  assert got_bool, 'Past its lock time and not complete: the episode is on air.';
+
+  update episodes set status = 'complete' where id = ep4;
+  select is_live into got_bool from v_episodes_public where id = ep4;
+  assert not got_bool, 'A completed episode is not on air, whatever its lock time says.';
+
+  update episodes set live_at = now() + interval '1 hour', status = 'upcoming' where id = ep4;
+  select is_live into got_bool from v_episodes_public where id = ep4;
+  assert not got_bool, 'An episode whose lock time is still to come is not on air.';
+
+  update episodes set live_at = null where id = ep4;
+  select is_live into got_bool from v_episodes_public where id = ep4;
+  assert not got_bool, 'No lock time, no broadcast: is_live must fail closed.';
 
   -- ---- THE BAKE GUESS --------------------------------------------------
   -- RULES §6. Two bakes per player, named once before episode 1; a guess pays

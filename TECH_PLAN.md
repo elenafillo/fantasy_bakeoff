@@ -102,8 +102,26 @@ bingo_prompt, status`
 - `status`: `upcoming | locked | live | complete`
 - `deadline_at` — 18:00 UK on the day of the episode. Stored as `timestamptz`,
   so British Summer Time is Postgres's problem, not ours.
-- `live_at` — stamped when the GM opens live scoring. **This is the hard lock**
-  and the boundary between LATE and VERY LATE.
+- `live_at` — 20:00 UK on the air date, when the episode goes out. **This is
+  the hard lock** and the boundary between LATE and VERY LATE. Derived from
+  `air_date` by the same trigger as the deadline, and overridable per episode.
+
+  It was stamped by hand until phase 8 — a **Go live** button the GM pressed as
+  the episode started — and that was wrong for the reason `top_picks_lock_at`
+  was wrong: a rule that depends on somebody remembering an action is not a
+  rule. Forget the button and the panel never locks, so an entry at 21:15 from
+  someone who has watched the technical is merely LATE, and nothing says so.
+  Two moments now come from one date: 18:00 closes the picks, 20:00 closes the
+  panel.
+
+- **`status` no longer carries `live`.** Whether an episode is on air is
+  `live_at <= now()`, computed where it is needed —
+  `v_episodes_public.is_live` for the browser, `serverNow` for the GM panel — so
+  there is nothing to set and nothing to go stale. The flow is
+  `upcoming → locked → complete`, and only **`complete`** is load-bearing: it is
+  what `pickCurrent`, `lockState` and `v_baker_stats.weeks_survived` read.
+  `'live'` stays in the CHECK constraint because removing a value means
+  rewriting it, and an old row may still carry it.
 
 **`entries`** — `id, player_id, episode_id, submitted_at, confirmed_at,
 lateness, is_disallowed, gm_unlocked_at`
@@ -465,8 +483,11 @@ means retyping it one-handed. Then tabs:
   like any other answer rather than through a separate switch, because on the
   night the question is always "who won this?" and *nobody* is a real answer to
   it. Players never see Nobody as an option — it exists only for recording.
-- **Episodes** — theme, air date, deadline, **bingo prompt**, and the
-  `upcoming → locked → live → complete` status. "Go live" is the hard lock.
+- **Episodes** — theme, air date, the two derived moments (**Deadline** at
+  18:00 and **Locks at** at 20:00, both editable), the **bingo prompt**, and the
+  `upcoming → locked → complete` status. There is no Go live button: the panel
+  locks itself, and **Complete** is the only status that does anything — it
+  moves everyone on to next week.
 - **Entries** — every entry with its lateness flag, the **Disallow** checkbox,
   and **Open the door** to let one player submit late this week.
 
@@ -562,7 +583,7 @@ of your three would otherwise collide with a row the same edit is about to move.
 `process.env.GM_PASSWORD` on every call (no sessions, no tokens — same as
 worm-street).
 
-Built: `state` · `setCategory` · `setEpisode` · `goLive` · `toggleDisallow` ·
+Built: `state` · `setCategory` · `setEpisode` · `toggleDisallow` ·
 `unlockEntry` · `upsertLeague` · `upsertPlayer` · `generateCode` ·
 `upsertBaker` · `setGuess` · `setGuessHit`.
 
@@ -860,14 +881,17 @@ and go public at episode 2's. Fail-closed on a null deadline, no new machinery.
 
 **This first gated on `live_at`, and that was a bug worth recording**, because
 `live_at` still looks like the more precise answer to "has episode 1 aired?"
-It is stamped only by the Go live button and cleared by Take it back — and Take
+It was then stamped by the Go live button and cleared by Take it back — and Take
 it back was the *only* route from `live` to `complete`, so every episode reached
 "over" with a null `live_at` and the board emptied exactly when the episode
-finished. Elena found it within minutes of the first paste. Two fixes went in:
-the Episodes tab can now reach Complete directly from Live (which is the right
-behaviour regardless — "take it back" means *it was never on air*), and the gate
-moved to `deadline_at`, which follows `air_date` through schema.sql's trigger
-and depends on no button at all.
+finished. Elena found it within minutes of the first paste. The gate moved to
+`deadline_at`, which follows `air_date` through schema.sql's trigger and depends
+on no button at all.
+
+Reviewing that button afterwards is what removed it altogether — the same
+weakness applied to the hard lock itself, which is a far more consequential
+thing to leave hanging off a tap. `live_at` is now derived at 20:00, `status`
+has lost its `live` value, and "is it on air" is a comparison. See §3.
 
 **What the old design bought, and what losing it costs.** The gap between lock
 and reveal was the GM's private window to unify wordings. It is gone: the GM now

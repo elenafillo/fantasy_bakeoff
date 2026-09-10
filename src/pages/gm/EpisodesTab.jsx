@@ -1,11 +1,17 @@
 // ============================================================
-// Episodes — theme, air date, deadline, bingo prompt, status
+// Episodes — theme, air date, the two moments, bingo prompt, status
 // ============================================================
+// TWO MOMENTS, ONE DATE: the deadline closes the picks at 18:00, and the lock
+// closes the panel at 20:00 when the episode goes on air. Both are derived from
+// the air date by schema.sql's trigger and both are editable here for a week
+// that behaves oddly.
+//
+// The lock used to be a "Go live" button pressed mid-episode. It is a field now
+// because a rule nobody can forget beats a rule somebody has to remember.
 
 import { useState } from 'react'
 import { Panel } from '../../components/Panel.jsx'
-import { Confirm } from './Confirm.jsx'
-import { ukTime, toLocalInput } from './time.js'
+import { ukTime, toLocalInput, isOnAir } from './time.js'
 
 export function EpisodesTab({ state, send, busy }) {
   const ep = state.episode
@@ -33,10 +39,14 @@ export function EpisodesTab({ state, send, busy }) {
   if (form.deadline_at !== toLocalInput(ep.deadline_at)) {
     patch.deadline_at = form.deadline_at ? new Date(form.deadline_at).toISOString() : ''
   }
+  if (form.live_at !== toLocalInput(ep.live_at)) {
+    patch.live_at = form.live_at ? new Date(form.live_at).toISOString() : ''
+  }
   if (form.status !== ep.status) patch.status = form.status
   const dirty = Object.keys(patch).length > 0
 
   const set = (field) => (e) => setForm({ ...form, [field]: e.target.value })
+  const onAir = isOnAir(ep, state.serverNow)
 
   return (
     <Panel head={`Episode ${ep.number}${ep.is_final ? ' · the final' : ''}`}>
@@ -71,6 +81,30 @@ export function EpisodesTab({ state, send, busy }) {
           </span>
         </label>
 
+        {/* The hard lock, and it used to be a button. "Go live" stamped this
+            with the server clock when the GM pressed it mid-episode — so
+            RULES §2.5's promise that the panel locks when the episode starts
+            rested on somebody remembering. It is derived from the air date now
+            and sits here beside the deadline, because the two are the same kind
+            of thing: one moment closes the picks, the other closes the panel. */}
+        <label className="field">
+          <span className="picker-label">Locks at</span>
+          <input
+            className="input"
+            type="datetime-local"
+            value={form.live_at}
+            onChange={set('live_at')}
+          />
+          <span className="small muted">
+            {ep.live_at
+              ? `Currently ${ukTime(ep.live_at)} UK — after this, only players you open a door for can submit.`
+              : 'No lock: nobody is shut out, however late they submit.'}
+            {' '}Set from the air date at 20:00. Change it for a week that airs
+            at an odd hour — though moving the air date afterwards will reset it,
+            the same as it does the deadline.
+          </span>
+        </label>
+
         <label className="field">
           <span className="picker-label">This week&rsquo;s bingo</span>
           <textarea
@@ -84,36 +118,21 @@ export function EpisodesTab({ state, send, busy }) {
 
         <label className="field">
           <span className="picker-label">Status</span>
-          {/* Live → Complete is allowed straight from here, and that matters
-              more than it looks: the only route used to be Take it back, which
-              CLEARS live_at, so an episode could never be both "aired" and
-              "over". Going back to upcoming or locked still goes through Take
-              it back, because that is the action that says it was never on air.
-
-              'live' is not selectable from any other status — it is the one
-              status with a side effect (live_at, the hard lock), so it stays
-              reachable only through Go live. api/gm.js refuses it too. */}
+          {/* Three values, and only one of them does anything: COMPLETE is what
+              moves everyone on to next week. Upcoming and Locked are labels —
+              selecting "Locked" does not lock the panel, the time above does.
+              The old 'live' value is gone: whether an episode is on air is a
+              comparison now, not something to set and forget. */}
           <select className="input" value={form.status} onChange={set('status')}>
-            {ep.status === 'live' ? (
-              <>
-                <option value="live">Live</option>
-                <option value="complete">Complete</option>
-              </>
-            ) : (
-              <>
-                <option value="upcoming">Upcoming</option>
-                <option value="locked">Locked</option>
-                <option value="complete">Complete</option>
-              </>
-            )}
+            <option value="upcoming">Upcoming</option>
+            <option value="locked">Locked</option>
+            <option value="complete">Complete</option>
           </select>
-          {ep.status === 'live' && (
-            <span className="small muted">
-              On air. Mark it <strong>Complete</strong> when the episode
-              finishes — that keeps the on-air time and moves everyone on to
-              next week. Take it back below only if it isn&rsquo;t really airing.
-            </span>
-          )}
+          <span className="small muted">
+            {onAir
+              ? 'On air now. Mark it Complete when you have finished entering the results — that moves everyone on to next week.'
+              : 'Complete is the one that counts: it moves /play and the table on to the next episode. The panel locks itself at the time above.'}
+          </span>
         </label>
       </div>
 
@@ -123,31 +142,15 @@ export function EpisodesTab({ state, send, busy }) {
         </button>
       </div>
 
-      <hr className="rule" />
-
-      {ep.live_at ? (
+      {onAir && (
         <>
+          <hr className="rule" />
           <p className="small">
-            <strong>On air since {ukTime(ep.live_at)} UK.</strong> Anyone who hasn&rsquo;t
-            submitted is locked out until you open their door.
+            <strong>On air since {ukTime(ep.live_at)} UK.</strong> Anyone who
+            hasn&rsquo;t submitted is locked out until you open their door on the
+            Entries tab.
           </p>
-          <Confirm
-            label="Take it back"
-            confirmLabel="Yes — not live after all"
-            note="Going live again later stamps a new time. Entries already marked very late keep that flag — it records when they arrived."
-            className="btn btn-quiet"
-            busy={busy}
-            onConfirm={() => send('goLive', { live: false })}
-          />
         </>
-      ) : (
-        <Confirm
-          label="Go live"
-          confirmLabel="Yes — go live"
-          note="This closes the panel for everyone who hasn't submitted."
-          busy={busy}
-          onConfirm={() => send('goLive')}
-        />
       )}
     </Panel>
   )
@@ -159,6 +162,7 @@ function formFrom(ep) {
     bingo_prompt: ep.bingo_prompt ?? '',
     air_date: ep.air_date ?? '',
     deadline_at: toLocalInput(ep.deadline_at),
+    live_at: toLocalInput(ep.live_at),
     status: ep.status,
   }
 }

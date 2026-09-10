@@ -66,7 +66,11 @@ export default function Dashboard({ slug }) {
 
   // ---- the poll ----
   // 4s while the episode is airing, 30s the rest of the week (TECH_PLAN §8).
-  const interval = live?.currentEpisode?.status === 'live' ? 4000 : 30000
+  // `is_live` is computed in v_episodes_public from the episode's lock time, so
+  // this needs no clock of its own. It used to read `status === 'live'`, which
+  // the GM set by pressing Go live — and a forgotten tap left the dashboard
+  // polling every 30s through the one hour the 4s interval exists for.
+  const interval = live?.currentEpisode?.is_live ? 4000 : 30000
 
   useEffect(() => {
     if (!league) return

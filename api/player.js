@@ -315,12 +315,22 @@ async function guessState(player, seasonId, currentEp, currentEntry, now) {
     submittedAt: mine[0]?.submitted_at ?? null,
   }
 
-  // No episode 1 means no season worth speaking of. Nothing to say, and the
-  // panel hides the section rather than explaining an empty database.
-  if (!epOne) return { ...base, open: false, editable: false, reason: null, wouldBe: null }
+  // `open` is what decides whether /play shows the section at all, and it is
+  // narrower than "there are guesses": the block belongs on the panel only
+  // while EPISODE 1 IS THE CURRENT EPISODE.
+  //
+  // From episode 2 onwards it would be a receipt for something settled weeks
+  // ago, sitting under the picks you actually came to make — and the dashboard
+  // board already tells that story better, with everybody else's beside yours.
+  // A guess that pays in a later week still reaches this panel: it lands in the
+  // scorecard's split, from v_episode_scores.guess_points.
+  //
+  // No episode 1 at all means no season worth speaking of, and the same answer.
+  if (!epOne || currentEp?.id !== epOne.id) {
+    return { ...base, open: false, editable: false, reason: null, wouldBe: null }
+  }
 
-  const entry = currentEp?.id === epOne.id ? currentEntry : null
-  const lock = lockState(epOne, entry, now)
+  const lock = lockState(epOne, currentEntry, now)
 
   return {
     ...base,

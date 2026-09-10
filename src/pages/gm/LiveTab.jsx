@@ -6,19 +6,23 @@
 
 import { useState } from 'react'
 import { Panel } from '../../components/Panel.jsx'
-import { Confirm } from './Confirm.jsx'
-import { ukTime } from './time.js'
+import { ukTime, isOnAir } from './time.js'
 
 export function LiveTab({ state, send, busy }) {
   const { episode, episodeCategories, results, bakers, entries } = state
+
+  // Computed against the SERVER's clock, not this device's — the panel gets
+  // opened on whatever phone is to hand. It used to read `live_at is set`,
+  // which said "On air" for every episode that had ever aired.
+  const onAir = isOnAir(episode, state.serverNow)
 
   return (
     <>
       <Panel head={`Episode ${episode.number}${episode.theme ? ` · ${episode.theme}` : ''}`}>
         <div className="deadline">
-          <span className={`pill ${episode.live_at ? 'bad' : ''}`}>
+          <span className={`pill ${onAir ? 'bad' : ''}`}>
             <span className="dot" />
-            {episode.live_at ? 'On air' : episode.status}
+            {onAir ? 'On air' : episode.status}
           </span>
           <span className="pill">
             <span className="dot" />
@@ -39,14 +43,20 @@ export function LiveTab({ state, send, busy }) {
           </p>
         )}
 
+        {/* There is no Go live button any more, and nothing to press: the panel
+            locks itself at the time on the Episodes tab, derived from the air
+            date. Saying so here matters, because this is the tab you are on
+            when the episode starts and its absence would read as missing. */}
         {!episode.live_at && (
-          <Confirm
-            label="Go live"
-            confirmLabel="Yes — go live"
-            note="This closes the panel for everyone who hasn't submitted. Only the Episodes tab can undo it."
-            busy={busy}
-            onConfirm={() => send('goLive')}
-          />
+          <p className="notice">
+            No lock time set, so nobody will be shut out when the episode starts.
+            Set the air date on the Episodes tab.
+          </p>
+        )}
+        {episode.live_at && !onAir && (
+          <p className="small muted">
+            The panel locks itself at {ukTime(episode.live_at)} UK. Nothing to press.
+          </p>
         )}
       </Panel>
 

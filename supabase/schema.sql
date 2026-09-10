@@ -126,10 +126,27 @@ create table if not exists episodes (
   -- below. NULL until the schedule is announced — and a NULL deadline means
   -- predictions stay private (views.sql fails closed on this).
   deadline_at  timestamptz,
-  -- Stamped when the GM opens live scoring. The hard lock, and the boundary
-  -- between LATE and VERY LATE.
+  -- 20:00 UK on the day of the episode — when it goes on air. THE HARD LOCK,
+  -- and the boundary between LATE and VERY LATE.
+  --
+  -- Derived from air_date by the same trigger as the deadline, and it used to
+  -- be stamped by hand instead: a "Go live" button the GM pressed as the
+  -- episode started. That made RULES §2.5's promise — "the panel locks when
+  -- the episode starts" — rest entirely on somebody remembering to press a
+  -- button, live, while watching television. Forget it and a player could
+  -- submit at 21:15 having watched the technical, flagged only LATE.
+  --
+  -- Two derived moments now, from one date: picks close at 18:00, the panel
+  -- locks at 20:00. Both are overridable per episode for a week that airs at
+  -- an odd hour — the trigger only fills in what the caller left alone.
   live_at      timestamptz,
   bingo_prompt text,
+  -- 'live' is legacy and nothing sets it any more: whether an episode is on
+  -- air is `live_at <= now()`, computed rather than stored, so it cannot go
+  -- stale. Left in the constraint because dropping a value from a CHECK means
+  -- rewriting it, and an old row may still carry it. The flow is
+  -- upcoming → locked → complete, and only 'complete' is load-bearing
+  -- (pickCurrent, lockState, v_baker_stats.weeks_survived).
   status       text not null default 'upcoming'
                check (status in ('upcoming','locked','live','complete')),
   is_final     boolean not null default false,
@@ -137,39 +154,84 @@ create table if not exists episodes (
   unique (season_id, number)
 );
 
--- Deadlines are 18:00 Europe/London on the air date. Storing timestamptz and
--- converting from the named zone means British Summer Time is Postgres's
+-- TWO MOMENTS, ONE DATE. Picks close at 18:00 Europe/London on the air date;
+-- the panel locks at 20:00 when the episode goes on air. Storing timestamptz
+-- and converting from the named zone means British Summer Time is Postgres's
 -- problem — a series running from September into November crosses the change,
--- and a hardcoded +01:00 would silently move the deadline by an hour.
+-- and a hardcoded +01:00 would silently move both by an hour.
 create or replace function fbo_derive_deadline(d date)
 returns timestamptz language sql immutable as $$
   select (d + time '18:00') at time zone 'Europe/London';
 $$;
 
-create or replace function fbo_set_episode_deadline()
+create or replace function fbo_derive_live(d date)
+returns timestamptz language sql immutable as $$
+  select (d + time '20:00') at time zone 'Europe/London';
+$$;
+
+-- Each moment follows air_date INDEPENDENTLY, and that is deliberate: the two
+-- conditions below are separate so that overriding one (an episode airing at
+-- 21:00, say) does not stop the other from tracking the date.
+create or replace function fbo_set_episode_times()
 returns trigger language plpgsql as $$
 begin
   if tg_op = 'INSERT' then
     if new.air_date is not null and new.deadline_at is null then
       new.deadline_at := fbo_derive_deadline(new.air_date);
     end if;
-  -- On update, follow air_date only when the caller did not also set the
-  -- deadline themselves. That keeps a deliberate override (a one-off early
-  -- deadline, say) from being overwritten by this trigger.
-  elsif new.air_date is distinct from old.air_date
-        and new.deadline_at is not distinct from old.deadline_at then
+    if new.air_date is not null and new.live_at is null then
+      new.live_at := fbo_derive_live(new.air_date);
+    end if;
+    return new;
+  end if;
+
+  -- On update, follow air_date only where the caller did not also set the
+  -- column themselves. That keeps a deliberate override — a one-off early
+  -- deadline, a late start — from being overwritten by this trigger.
+  --
+  -- THE SCOPE OF THAT IS ONE STATEMENT, which is worth being clear about: an
+  -- override wins over the derived value only when both arrive in the same
+  -- write. Move the air date on its own afterwards and both moments re-derive,
+  -- because an override belongs to the day it was set for — "20:00 on the new
+  -- day" beats "21:00 carried over from the old one". api/gm.js sends only the
+  -- fields that changed, so editing both in the panel sends both together and
+  -- the override survives, which is the escape hatch.
+  if new.air_date is distinct from old.air_date
+     and new.deadline_at is not distinct from old.deadline_at then
     new.deadline_at := case
       when new.air_date is null then null
       else fbo_derive_deadline(new.air_date)
     end;
   end if;
+
+  if new.air_date is distinct from old.air_date
+     and new.live_at is not distinct from old.live_at then
+    new.live_at := case
+      when new.air_date is null then null
+      else fbo_derive_live(new.air_date)
+    end;
+  end if;
+
   return new;
 end $$;
 
+-- Both names dropped: the trigger was episodes_set_deadline before it learned
+-- about live_at, and leaving it in place would fire alongside the new one.
 drop trigger if exists episodes_set_deadline on episodes;
-create trigger episodes_set_deadline
+drop trigger if exists episodes_set_times on episodes;
+create trigger episodes_set_times
   before insert or update on episodes
-  for each row execute function fbo_set_episode_deadline();
+  for each row execute function fbo_set_episode_times();
+
+drop function if exists fbo_set_episode_deadline();
+
+-- Backfill: episodes that have an air date but no lock time, because they were
+-- created when live_at was stamped by hand. Idempotent — an episode that
+-- already has one is left exactly as it is, including a deliberate override.
+update episodes
+   set live_at = fbo_derive_live(air_date)
+ where air_date is not null
+   and live_at is null;
 
 -- ------------------------------------------------------------
 -- Episode results

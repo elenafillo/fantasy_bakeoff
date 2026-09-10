@@ -556,7 +556,18 @@ create or replace view v_episodes_public as
 select
   e.id, e.season_id, e.number, e.theme, e.air_date,
   e.deadline_at, e.live_at, e.bingo_prompt, e.status, e.is_final,
-  (e.deadline_at is not null and e.deadline_at <= now()) as predictions_public
+  (e.deadline_at is not null and e.deadline_at <= now()) as predictions_public,
+  -- On air right now: past its lock time and not yet marked complete. Appended
+  -- rather than placed beside status, because CREATE OR REPLACE VIEW may only
+  -- add columns to the end.
+  --
+  -- COMPUTED, NOT STORED, and that is the point. `status = 'live'` used to
+  -- carry this and was set by a button the GM pressed as the episode started —
+  -- so a forgotten tap left the dashboard polling every 30s through the one
+  -- hour it exists for. A comparison cannot be forgotten. It is worked out here
+  -- rather than in the browser for the same reason `predictions_public` is: a
+  -- phone with a wrong clock should not decide what "now" means.
+  (e.live_at is not null and e.live_at <= now() and e.status <> 'complete') as is_live
 from episodes e;
 
 -- ------------------------------------------------------------
