@@ -37,6 +37,7 @@ late September 2026), so nothing is time-pressured yet.
 | 8 — the bake guess | ✅ **Done.** Two bakes per player before episode 1, ticked weekly by the GM, scored 5/2/0 in SQL. **Two new tables**, so `schema.sql` is pasted first this time — see below and TECH_PLAN §14 |
 | 9 — the deadline penalty | ✅ **Done.** Missing the deadline costs −2 (RULES §2.5), and the reveal moved from the deadline to the broadcast so a latecomer still guesses blind. `schema.sql` → `views.sql` → `rls.sql` applied, smoke test passing. Confirm became a real lock on your own picks |
 | — multiple leagues, GM half | ✅ **Done**, outside the phase numbering. The Leagues tab, `upsertLeague`, and league scoping on Entries and Players. **No SQL, no new grant, nothing to paste.** The dashboard switcher is built too — a button per league at the foot of the page, scoped to the season so the demo leagues stay off it |
+| — the bonus gets a week, and the dashboard a key | ✅ **Done**, outside the phase numbering. The top-three bonus now lands on the semi-final (+3 each) and the final (+6), which is what RULES §5 always said and nothing implemented — so the chart and the leaderboard agree again, and the bonus moves the table on the night. `views.sql` → `rls.sql` applied, smoke test passing. **No new grant.** Plus a shut-by-default "How to read this" at the foot of six dashboard panels, and the word *holding* removed from the leaderboard and the scorecard |
 
 Live database state: league **In The Oven** (`in-the-oven`, default), 2 players,
 the real 12-baker cast with names, bios and photos, 10 episodes with no air
@@ -196,6 +197,11 @@ src/
                         they are the same shape of thing and read as a pair
     StatsStrip.jsx   five things worth knowing; open by default
     SeriesRecap.jsx  every week so far, collapsed
+    HowToRead.jsx    the "How to read this" key at the foot of six dashboard
+                     panels, SHUT by default. A key for marks a panel has no
+                     room to spell out in place — never where a fact first
+                     appears, or the panel stops reading correctly for the
+                     people who never open one
   pages/          Dashboard · Play · Bakers · Rules · Gm
     gm/           one file per GM tab; Gm.jsx is only the shell
       GuessesTab.jsx  the bake guesses, grouped by canonical wording with the
@@ -438,12 +444,17 @@ label it.
 
 **Movement is the one real derivation.** `v_standings` knows only where you
 stand now, so last week's table is rebuilt from `v_episode_scores` — points from
-the episodes before this one, plus the series bonus, re-ranked with the same
-tie-and-skip rule Postgres uses. Two consequences worth knowing: the bonus
-appears in both tables, so it never produces movement of its own (there is no
-honest alternative — `v_series_bonus` carries no episode); and week one reports
-no movement at all rather than telling everybody below the leader they have
-fallen.
+the episodes before this one, re-ranked with the same tie-and-skip rule Postgres
+uses. Week one reports no movement at all rather than telling everybody below the
+leader they have fallen.
+
+**The series bonus used to be added on top of that and no longer is.** It had no
+episode, so `movementFor` carried it into both tables, where it cancelled out and
+could never move anybody — which is exactly what RULES §5 promises it should do.
+It now lands on the semi-final and the final like any other points
+(`v_series_bonus_scores`), so it arrives inside the per-episode rows and moves
+the table on the week it is won. **Adding `bonus_points` back here would count it
+twice and quietly cancel the movement out again.**
 
 **`/play` refreshes on focus, not on a timer** — see TECH_PLAN §8, which now
 says so. The `/api/player` half of that refresh is skipped while the form has
@@ -558,12 +569,14 @@ work with a dozen lines that cannot be told apart by hue:
 - Crosshair and tooltip on **mouse only**: on a phone a pointer handler here
   would fight the sideways scroll, and touch has the rows and chips instead.
 
-**Series bonuses are not on the lines.** `v_series_bonus` carries no episode, so
-there is no honest week to attach a +3 to — the same reason `movementFor`
-carries them across rather than counting them as this week's news. The
-leaderboard total includes them and the chart says so when they are non-zero.
-Live since phase 6 put the top three in, though it stays at zero until bakers
-are marked `finalist` after the semi-final.
+**Series bonuses ARE on the lines**, and this section said the opposite until
+the fix below. They had no episode, so the lines summed episode points while the
+leaderboard added the bonus on top: from the semi-final onwards the chart and
+the table disagreed by up to 15 points, with nothing on the page able to account
+for the gap. `v_series_bonus_scores` now lands the +3s on the semi-final and the
++6 on the final, which is what RULES §5 always said — so the chart needs no
+special case and the two agree at every point in the series. Nothing shows until
+bakers are marked `finalist` after the semi-final.
 
 ### The leaderboard, and the reorder
 
@@ -943,10 +956,13 @@ Two things fall out of it:
 
 - **The weekly job shrinks** — a guess pays once, so a hit resolves it and it
   drops off the tick list. Week 1 is ~15 guesses; by week 6 it is a handful.
-- **These points have an honest episode**, unlike the top-three bonus.
-  `v_series_bonus` carries no episode, which is why it can never step the chart
-  or produce movement. A guess hits in a specific week, so it does both, on the
-  night — the live feel the series bonus cannot have.
+- **These points have an honest episode.** A guess hits in a specific week, so
+  it steps the chart and moves the table on the night. This used to be the thing
+  that set guesses apart from the top-three bonus, which carried no episode and
+  could do neither; the bonus was given its two weeks afterwards
+  (`v_series_bonus_scores`), and **every point in the game now has a week**. If
+  something new ever pays points, give it an episode rather than a second arm on
+  `v_standings`.
 
 ### The one thing to get right
 
@@ -1255,6 +1271,118 @@ encoded the old design:
   spirit, now asserted the other way round: the test gives episode 1 an **air
   date** and lets the trigger derive `live_at`, proving the gate follows the
   schedule rather than a button.
+
+---
+
+## The bonus gets a week, and the dashboard gets a key
+
+✅ **Done**, outside the phase numbering. `views.sql` → `rls.sql` applied, smoke
+test passing. **No schema change and no new grant**, so it is the ordinary
+re-paste order.
+
+### The chart was lying, and RULES §5 already said so
+
+RULES §5 has always read *"the +3s are awarded when the semi-final ends and the
+finalists are known; the +6 lands at the final"*. **Nothing implemented that
+sentence.** `v_series_bonus` carried no episode; `v_standings` added it on top of
+the episode totals; the chart sums episode rows. So from the semi-final onwards
+the lines and the table disagreed by up to 15 points, and the only thing the page
+could do about it was print a sentence apologising for the gap.
+
+This was a **bug against RULES.md, not a design choice** — which is the useful
+way to file it, because the docs had quietly converted an unimplemented rule into
+a documented limitation, in five places. If a doc explains why something cannot
+work, check the rules before believing it.
+
+Two things follow from the fix, and the second is the better one:
+
+- the chart and the leaderboard agree at every point in the series, and the
+  chart needs no special case;
+- **the bonus moves the table on the night it is won.** Movement is a re-rank of
+  episode points, so a bonus outside them could never produce any — the
+  shake-up going into the last episode was structurally impossible.
+
+### How the two weeks are found
+
+`v_series_bonus_scores` splits `v_series_bonus` in two. **The final is the
+season's highest-numbered episode and the semi-final the one below it, derived
+and never stored** — the same rule as the 18:00 deadline, the 20:00 reveal and
+the top-three lock. Nothing to set, nothing to drift.
+
+The cost of deriving it: **adding an episode to a running season moves both.**
+Correct — a new last episode really is the new final — and `smoke_test.sql` now
+asserts it rather than leaving it as a surprise, by adding episode 7 mid-test and
+checking the +6 followed. All ten are seeded up front, so it does not arise.
+
+It **splits `v_series_bonus` rather than recounting from `top_picks`**, so the
+two cannot disagree about the total: `finalists` and `has_winner` are exactly the
+two halves of that view's `points`. A season with one episode has no semi-final
+and the +3s fall back onto the final rather than vanishing — losing points is the
+one failure mode not worth having.
+
+Downstream, `v_episode_scores` grows a fourth spine arm (the bonus can land in a
+week its owner made no picks in — the same hole the guess arm was opened for) and
+a `bonus_points` column. **`v_standings` stops adding the bonus a second time,
+and so does `movementFor`.** Either one left in place pays every top three twice.
+
+`v_standings.episode_points` and `total_points` are now the same number, and both
+names are slightly wrong — `create or replace view` cannot rename or re-order,
+and dropping the view cascades to its grants. Nothing in `src/` or `api/` reads
+`episode_points`, so the misnomer costs a comment.
+
+### The `::int` cast is load-bearing
+
+`finalists` is a `count(*)`, so `finalists * 3` is **bigint**, and
+`sum(bigint)` returns **numeric** in Postgres. That changed
+`v_episode_scores.points` from bigint to numeric, and `create or replace view`
+refuses a type change outright:
+
+```
+ERROR: 42P16: cannot change data type of view column "points"
+              from bigint to numeric
+```
+
+The other three arms of that view sum plain integers, which is why they come out
+bigint and this has to match them. Two related notes for anyone editing these
+views live: a partly-applied paste can leave the new view behind with the wrong
+column type, so `drop view if exists v_series_bonus_scores;` before re-pasting;
+and `rls.sql` deadlocks against an open dashboard tab, because its `alter`/`grant`
+statements want an exclusive lock on relations a 4-second poll is reading. Close
+the tabs, or `set local lock_timeout = '3s'` so it fails fast instead.
+
+### "How to read this"
+
+A shut-by-default `<details>` at the foot of six dashboard panels
+(`src/components/HowToRead.jsx`), sharing the quiet summary style the recap and
+the chart's number table already use.
+
+**It is a key, never where a fact first appears.** The panel above has to read
+correctly for someone who never opens it, so anything a player needs in order to
+avoid *misreading* a panel stays in the panel — the wall's "these are last
+week's picks" notice is the model. What belongs in the key is the vocabulary a
+panel has no room to spell out in place: the wall's five cell states and its red
+−1, the guess chip that came up and paid nothing, the struck top pick, the colour
+dash that ties a row to its line, and the fact that **tapping a leaderboard row
+works the chart at all** — an interaction that had no visible affordance.
+
+`term` takes a node, so the keys show the real marks rather than describing
+them — the wall passes an actual `<Mark>`, drawn by the component that draws the
+cells.
+
+### The word *holding* is gone
+
+The leaderboard's movement line said *holding* when you had not moved. It read as
+a state being announced rather than as the absence of a move, next to a points
+figure that may well have gone up — that line is about **position**, the one
+beside it is about points. Standing still now renders nothing, on the leaderboard
+and on `/play`'s scorecard both.
+
+**Zero and "week one" therefore look identical** — deliberate, and the one thing
+to revisit if it reads badly: both mean "no news about your place".
+
+The scorecard also gained a **"Your top three"** row in its sums block, for the
+reason the bake guess is already there: it is the largest single jump in the game
+and it arrives in a week whose picks may all have missed.
 
 ---
 

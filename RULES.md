@@ -255,8 +255,8 @@ A guess pays out **the week it appears, once**:
 | It never comes up | **0** |
 
 **Maximum 10 for a perfect pair.** Points land in the week the bake appears, so
-they move the table on the night like everything else — unlike the top-three
-bonuses, which have no week of their own.
+they move the table on the night like everything else — as every kind of point
+in this game now does, the top-three bonuses included (§5).
 
 That means an obvious guess is a bad guess. *"cake"* will certainly come up and
 will certainly be worth nothing, because everyone else thought of it too.

@@ -215,10 +215,17 @@ v_penalties          -- the two −1s, each tagged with the CATEGORY whose pick
                      --   Its no_entry arm is the only thing in this file built
                      --   on players × episodes rather than on entries — the
                      --   player it charges has no entry row to hang off
-v_episode_scores     -- player × episode → points, incl. penalties, plus a
-                     --   `penalties` jsonb array itemising them by category
-v_standings          -- player → cumulative points, rank
-v_series_bonus       -- top-3 finalist + winner bonuses
+v_episode_scores     -- player × episode → points, incl. penalties, guess
+                     --   points and the top-3 bonus, plus a `penalties` jsonb
+                     --   array itemising the penalties by category
+v_standings          -- player → cumulative points, rank. Sums the view above
+                     --   and adds NOTHING to it: the bonus is already in there
+v_series_bonus       -- top-3 finalist + winner bonuses, per player
+v_series_bonus_scores
+                     -- the same bonus split across the two weeks it is won in:
+                     --   +3 a finalist at the semi-final, +6 at the final
+                     --   (RULES §5). Both derived from the episode numbering,
+                     --   never stored. Feeds v_episode_scores. NOT granted
 v_baker_stats        -- per baker: star bakers, technicals, handshakes,
                      --   weeks survived, how often picked, how often
                      --   predicted to leave and didn't  (feeds /bakers)
@@ -238,15 +245,16 @@ v_series_guesses_public
 ```
 
 `v_standings` gives the current position only. **Movement** — where you stood
-last week — is rebuilt in the browser from `v_episode_scores`, since neither
-that view nor `v_series_bonus` carries a rank of its own
-([src/lib/scores.js](src/lib/scores.js)). That is the only scoring arithmetic
-anywhere in `src/`, and it is about ordering, not points.
+last week — is rebuilt in the browser from `v_episode_scores`, since that view
+carries no rank of its own ([src/lib/scores.js](src/lib/scores.js)). That is the
+only scoring arithmetic anywhere in `src/`, and it is about ordering, not points.
+It sums the per-episode rows and **nothing else**: the top-three bonus is in
+them, so adding `v_standings.bonus_points` on top would count it twice.
 
-**Three of these views are deliberately ungranted** — `v_prediction_scores`,
-`v_penalties` and `v_guess_scores`. The first two are internal steps computed
-from `entries` with no deadline filter of their own, safe only because the views
-built on them aggregate the individual picks away. Anything the UI needs from
+**Four of these views are deliberately ungranted** — `v_prediction_scores`,
+`v_penalties`, `v_guess_scores` and `v_series_bonus_scores`. The first two are
+internal steps computed from `entries` with no deadline filter of their own, safe
+only because the views built on them aggregate the individual picks away. Anything the UI needs from
 them travels out through `v_episode_scores` instead, which is why the penalty
 reasons are aggregated into a column there rather than the browser reading
 `v_penalties` directly.
@@ -257,6 +265,12 @@ they were typed. `v_episode_scores` takes a **number** from it and nothing else,
 and the words travel out through `v_series_guesses_public`, which carries the
 gate. One secret, one gate — the reason `guess_key` is not appended to
 `v_episode_scores` the way `penalties` was.
+
+`v_series_bonus_scores` is the mild case, and is ungranted only because nothing
+needs it: it is `v_series_bonus` — already public — split across the two weeks it
+is won in, and it reaches the browser as `v_episode_scores.bonus_points`.
+Granting it would publish nothing that is not already published twice over. The
+default here is to grant nothing that has no reader.
 
 One consequence worth knowing before editing any of them: **`create or replace
 view` may only append columns to the end of the list.** Re-ordering means
@@ -951,11 +965,12 @@ Two properties fall out:
 - **The weekly job shrinks.** A guess pays once, so a hit resolves it and it
   drops off the list. Week 1 is a scan of ~15 distinct guesses; by week 6 it is
   a handful.
-- **These points have an honest episode**, unlike the top-three bonus.
-  `v_series_bonus` carries no episode, which is why it can never appear on the
-  chart or produce movement. A guess hits *in a specific week*, so it steps the
-  line and moves the table on the night it lands — the live-scoring feel the
-  series bonus cannot have.
+- **These points have an honest episode.** A guess hits *in a specific week*, so
+  it steps the line and moves the table on the night it lands. This used to
+  distinguish them from the top-three bonus, which carried no episode and could
+  do neither; `v_series_bonus_scores` later gave that bonus the two weeks RULES
+  §5 always assigned it — the +3s at the semi-final, the +6 at the final — so
+  **every point in the game now has a week**.
 
 ### Store what they typed AND what it was unified to
 
