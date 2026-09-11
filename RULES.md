@@ -332,9 +332,15 @@ If that somehow doesn't separate them, it's a shared title.
 - Predictions are **invisible to everyone else** — including the GM's dashboard —
   until the episode starts airing. After that they're all public. The GM's panel
   is held to the same clock as everyone else's, because the GM is a player.
-- **Bake guesses are invisible to everyone, the GM included, until episode 1
-  airs** (§6). They lock two hours earlier, at the deadline, so by the time the
-  GM can read anybody's their own two are as locked as everybody's.
+- **Bake guesses are invisible to everyone until episode 1 airs** — with one
+  deliberate exception: **the GM can read them from the moment they lock**, two
+  hours earlier, so that the wordings can be tidied before anyone is looking
+  (§6). It is the only place in the game where the GM's clock runs ahead of the
+  league's, and it is not an advantage: **the GM's own two lock at that same
+  instant**, so nothing they read can change what they guessed. What the GM
+  *can* do in that window — unify wordings, which moves points — is watched a
+  different way: what you typed is never edited and sits beside the tidied
+  version on the board, so every change is visible after the fact.
 - The GM is a player too, but the GM enters results *after* the deadline has
   locked their own entry like everybody else's.
 - The GM's rulings on the Bingo Bonus, and on whether a category went to Nobody,

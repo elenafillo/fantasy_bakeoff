@@ -41,7 +41,7 @@ export function GuessesTab({ state, send, busy }) {
         </p>
         <p className="small muted">
           {guesses.locksAt
-            ? 'They appear here the moment episode 1’s deadline passes — which is also when everyone else sees them, so tidy the spellings before you start ticking.'
+            ? 'They appear here the moment episode 1’s deadline passes — two hours before the league sees them, when the episode airs. That gap is your window to tidy the spellings, so use it before you start ticking.'
             : 'Episode 1 has no deadline yet, so nothing has locked. Set its air date on the Episodes tab.'}
         </p>
       </Panel>

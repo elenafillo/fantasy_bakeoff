@@ -448,6 +448,13 @@ where g.is_disallowed is false;
 -- edits, and never `guess_key` as the thing on display, so unifying moves
 -- points rather than words — but private is how §6 says it works.
 --
+-- THE GM'S OWN GATE IS NOT HERE. They read `series_guesses` directly with the
+-- service role, so this view's WHERE clause never applies to them; the gate is
+-- `visible` in api/gm.js's buildGuesses, and it is set to the DEADLINE where
+-- this is set to the air time. That two-hour difference IS the window. Change
+-- one without the other and either the GM loses it again, or the league sees
+-- the guesses early.
+--
 -- Disallowed guesses ARE included, flagged, so the board can show them struck
 -- through — the same choice v_public_predictions makes, for the same reason.
 -- They are already out of `holders` and `points`, which come from

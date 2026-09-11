@@ -323,10 +323,12 @@ One API rule worth knowing before you touch either tab:
   `schema.sql` derives `deadline_at` from `air_date` *only* when the same write
   did not also set `deadline_at` — a form posting every field every time would
   quietly stop deadlines following air dates.
-- **The GM sees pick counts, not picks, until the deadline.** Elena plays as
+- **The GM sees pick counts, not picks, until the episode airs.** Elena plays as
   well as runs it, so the Entries data carries `picks_made` and withholds
-  `picks` until `deadline_at` has passed — the same rule as
-  `v_public_predictions`, applied at the other end of the wire.
+  `picks` until `live_at` has passed — the same rule as `v_public_predictions`,
+  applied at the other end of the wire, and it moved with that view in phase 9.
+  Weekly picks stay on the reveal deliberately, unlike the bake guesses: there is
+  no editing job to do in the 18:00–20:00 gap, so there is no reason to look.
 - **Opening a door creates an entry if there isn't one.** `lockState` in
   `api/player.js` reads `gm_unlocked_at` off an entry row, so there has to be
   one. The placeholder takes the default lateness rather than being stamped very
@@ -915,6 +917,12 @@ are opposite: the top three needs you to have watched everyone bake, and this
 needs you to have watched nothing. Locking at episode 2 would leave episode 1's
 challenges already public — a freebie or a carve-out.
 
+> ⚠️ **Superseded by phase 9**, which split the lock from the reveal and gave the
+> window back: the guesses now lock at episode 1's deadline and go public when it
+> airs, with the GM reading them at the lock. The paragraph below is the phase 8
+> reasoning, kept because its diagnosis of `live_at` is still the reason the
+> column had to be fixed before the reveal could sit on it.
+
 **Locked and revealed at episode 1's deadline** — the same instant, and the same
 shape as the top three at episode 2's. An earlier version revealed them later,
 when episode 1 started airing, to buy the GM a private window for unifying the
@@ -1023,12 +1031,19 @@ picks chosen creates an empty entry, which shows on the Entries tab as "nothing
 in" and puts a 0 on the chart for episode 1. Correct, if slightly literal — they
 did submit something.
 
-**The GM sees the guesses no earlier than anybody else** — episode 1's deadline,
-for both. Before it the Guesses tab shows a count and not one word, because the
-GM plays too and has two of their own to make; same rule as the Entries tab's
-pick counts, at the same end of the wire. So **unify the wordings before you
-tick anything**, not because the list is private but because a tick is when the
-points start mattering.
+**The GM sees the guesses at the LOCK, the league at the REVEAL** — 18:00 and
+20:00 since phase 9, which gives the GM two private hours. Before the lock the
+Guesses tab shows a count and not one word, because the GM plays too and has two
+of their own to make; same rule as the Entries tab's pick counts, at the same end
+of the wire. After it, **unify the wordings before you tick anything** — that
+window exists for exactly this, and a tick is when the points start mattering.
+
+This is the one place the GM's clock runs ahead of the league's, and it is worth
+knowing why it is allowed. The GM's own two lock at that same instant, so nothing
+they read can change what they guessed. The unification power is the thing worth
+watching, not the timing, and RULES §6 answers that separately: `guess_text` is
+never edited and sits beside the key on the public board, so the change is
+auditable after the fact.
 
 **RULES §6's late-guess warning covered LATE as well as VERY LATE while the
 reveal sat on the deadline — phase 9 narrowed it back to VERY LATE.** With the

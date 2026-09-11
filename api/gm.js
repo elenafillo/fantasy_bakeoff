@@ -238,18 +238,32 @@ function shapeEntry(en, picksPublic) {
  * along with everybody else's. Before that it sends a count and nothing more,
  * the same rule shapeEntry applies to picks and for the same reason.
  *
- * TWO MOMENTS, AND THIS FUNCTION NOW USES BOTH. `locksAt` is episode 1's
- * DEADLINE: the instant everybody's pair stops being editable, which is what
- * the tab counts down to. `visible` is episode 1's AIR TIME, the instant the
- * public board opens (v_series_guesses_public). They were the same value until
- * RULES §2.5 split them, and conflating them again in either direction breaks
- * something real — read from the deadline and the GM sees the list two hours
- * before the league; read from the air time and the tab tells people their
- * guesses are still editable when they are not.
+ * THE GM SEES THESE AT THE LOCK, NOT AT THE REVEAL, and this is the ONE place
+ * in the app where the GM's clock is deliberately ahead of the league's.
  *
- * The gap between the two is the GM's window for unifying the wordings before
- * anybody else reads them, which is how RULES §6 describes the job and which
- * the deadline-gated version had quietly taken away.
+ *   18:00, episode 1's deadline  the guesses lock — and the GM can read them
+ *   20:00, episode 1 airs        v_series_guesses_public opens to everybody
+ *
+ * Those two hours are the GM's window to unify the wordings, which RULES §6
+ * describes as a job to be done "once, as soon as the guesses lock and before
+ * any of them is ticked". Doing it in public, with the authors watching, is a
+ * worse version of the same job.
+ *
+ * WHY IT IS NOT AN ADVANTAGE: the GM's own two lock at that same instant, so
+ * nothing they read can change what they guessed. That is the whole safeguard,
+ * and it is why RULES §8 can hold "the GM is a player" and this at once. The
+ * unification power itself is the thing worth watching, not the timing — and
+ * §6 answers that separately: `guess_text` is never edited and sits beside the
+ * key on the public board, so every change is auditable after the fact.
+ *
+ * Contrast `picksPublic` above, which stays on the REVEAL. Weekly picks need no
+ * editing pass, so there is no job to do in the gap and no reason to look. The
+ * asymmetry follows the work, not the privilege.
+ *
+ * `locksAt` is the same moment as `visible` again, then — but keep them as two
+ * expressions. They answer different questions ("can anyone still edit?" and
+ * "may the GM read them?"), and the next change to either should not silently
+ * move the other.
  *
  * `points` and `holders` come from v_guess_scores — the service role reads it
  * even though rls.sql grants it to nobody. The grouping below is display; the
@@ -259,7 +273,7 @@ function shapeEntry(en, picksPublic) {
 async function buildGuesses(season, episodes, players, now) {
   const episodeOne = episodes.find((e) => e.number === 1) ?? null
   const visible =
-    Boolean(episodeOne?.live_at) && new Date(episodeOne.live_at) <= now
+    Boolean(episodeOne?.deadline_at) && new Date(episodeOne.deadline_at) <= now
 
   const ids = players.map((p) => p.id)
   if (ids.length === 0) {
