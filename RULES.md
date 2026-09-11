@@ -50,7 +50,7 @@ Note that handshake and bingo might have multiple correct bakers!
 > **Operational note:** the prompt has to be written before Tuesday 18:00, so
 > writing next week's bingo is part of the GM's post-episode routine.
 
-### 2.3 The penalty
+### 2.3 The penalties
 
 Getting a baker badly wrong in *both directions* costs you:
 
@@ -59,43 +59,87 @@ Getting a baker badly wrong in *both directions* costs you:
 | You named someone as **Best Baker** and they **left** | **−1** |
 | You named someone as **Leaving Baker** and they got **Star Baker** | **−1** |
 
-Both can fire in the same week, so the worst possible week is **−2**.
+There is one more, and it is about the week rather than any one pick: **nothing
+in by the deadline costs −2** (§2.5).
+
+All three can fire in the same week, so the worst possible week is **−4**.
 
 ### 2.4 Deadline and confirming
 
 - Predictions are due **18:00 on Tuesday** (UK time), the day of the episode.
-- You can change your answers as often as you like before then. **Confirm** marks
-  your entry as final — you can un-confirm and edit right up to the deadline.
-- An entry that is incomplete at the deadline still scores for whichever categories you did fill in.
+- You can change your answers as often as you like before then, and it costs
+  nothing.
+- An entry that is incomplete at the deadline still scores for whichever
+  categories you did fill in. An entry with *nothing* in it is a different
+  matter — see §2.5.
 
-### 2.5 Late entries
+**Save and Confirm are different buttons doing different jobs.**
 
-The deadline is soft, but the episode is not — and everything late is clearly
-labelled:
+| | What it does |
+|---|---|
+| **Save picks** | Writes your picks. This is the whole of entering — and it is the only button that can ever cost you points. |
+| **Confirm entry** | Says *"I'm done."* It **locks your own picks** so you can't change them by accident, and shows as a Confirmed tag on your panel and on the GM's list. **Un-confirm** unlocks them again. |
 
-| When you submitted | Flag | Allowed? |
-|--------------------|------|----------|
-| Before 18:00 Tuesday | — | Always |
-| Between 18:00 and 20:00 | **LATE** | Always |
-| After 20:00, once the episode is on air | **VERY LATE** | **Only if the GM opens the door** |
+Confirming is free, un-confirming is free, and neither affects your score: an
+entry that is saved and never confirmed scores exactly the same as one that is
+confirmed. Confirming after the deadline does **not** make your entry late —
+it is a statement about your entry, not a change to it.
 
-- **The panel locks itself at 20:00 on the air date**, when the episode goes
-  out. That is what stops someone entering at 20:15 having already watched the
-  technical, and it happens on its own — there is no button for the GM to
-  remember. Both moments come from the air date: 18:00 closes the picks, 20:00
-  closes the panel. If an episode airs at an odd hour the GM can move the lock,
-  the same way they can move a deadline.
+The lock is your own, and you hold the key. It is there so that a card you have
+finished with stays finished.
+
+### 2.5 The deadline, and missing it
+
+**Nothing in by 18:00 costs you 2 points.** One rule, three ways to land on it:
+
+| When you submitted | Flag | Allowed? | Cost |
+|--------------------|------|----------|-----:|
+| Before 18:00 Tuesday | — | Always | — |
+| Between 18:00 and 20:00 | **LATE** | Always | **−2** |
+| After 20:00, once the episode is on air | **VERY LATE** | **Only if the GM opens the door** | **−2** |
+| Never — or an empty card | — | — | **−2** |
+
+It is charged **once per week**, never twice, and it is the same 2 points in
+every case. That last part is deliberate: once six o'clock has gone the fee is
+already owed, so there is nothing further to lose by playing, and every reason
+to. A ladder of escalating fines would quietly tell a latecomer not to bother —
+and a league of friends wants the opposite.
+
+**An entry with nothing in it is not an entry.** Opening the panel and saving a
+blank card is the same as never opening it, and so is an entry the GM has
+disallowed — §2.4's "an incomplete entry still scores" means *partly* filled in,
+not empty.
+
+**Two moments, not one.** They used to be the same instant and they are not any
+more:
+
+- **18:00 closes the picks.** After it, saving anything — including a change to
+  an entry that was already in on time — is a late submission and costs the 2.
+  Your panel will say so, and will make you press a second button before it lets
+  you do it.
+- **20:00 airs the episode.** The panel hard-locks, and everybody's predictions
+  go public at that same moment. Both come from the air date, and neither needs
+  anyone to remember to press anything. If an episode airs at an odd hour the GM
+  can move either, the same way they can move a deadline.
+
 - The GM can **unlock a specific player for a specific week** — travelling,
   broken phone, genuine mishap. Anything submitted through that door is stamped
   **VERY LATE** on the entry and on the dashboard. It cannot be done quietly.
 - The GM has a **Disallow** switch on every entry. Ticking it removes that entry
-  from scoring *and* from all the stats, as if it were never made.
+  from scoring *and* from all the stats, as if it were never made — which means
+  it also counts as nothing having been submitted, and costs the 2.
 
-> **Be aware:** once the deadline passes, everyone's predictions become public.
-> A VERY LATE entry is therefore made by someone who can already see what the
-> rest of the league picked, and possibly some of what happened. That is a
-> feature of letting them in at all, not something the software can prevent —
-> which is why the door opens per-player, per-week, and only by the GM.
+> **Why the reveal waits for the broadcast.** If picks went public at the
+> deadline, anyone submitting between 18:00 and 20:00 would be writing their card
+> with the whole league's on screen — which is a much bigger prize than 2 points
+> is a deterrent. Moving the reveal to the moment the episode airs makes that
+> impossible rather than merely discouraged: **however late you are, you are
+> guessing blind.**
+>
+> The one exception is a **VERY LATE** entry, which by definition arrives after
+> the reveal and possibly after some of the episode. That is a feature of letting
+> someone in at all, not something the software can prevent — which is why that
+> door opens per-player, per-week, only by the GM, and why Disallow exists.
 
 ---
 
@@ -138,6 +182,11 @@ different card:
 | **Bingo Bonus** | **+2** |
 | **Handshake** | **+2** |
 
+**Neither −1 can fire in the final**, and not by exemption: there is no Leaving
+Baker and no Star Baker for them to be wrong about. **The deadline penalty
+still applies** — a deadline is a deadline, and the last week is the one it
+would be most tempting to drift past.
+
 ---
 
 ## 5. Top Three Bakers
@@ -164,9 +213,10 @@ The +3s are awarded **when the semi-final ends** and the finalists are known; th
 +6 lands **at the final**. So there's a shake-up in the table going into the last
 episode, and then the winner bonus on top of it.
 
-Everyone's top three bakers are revealed at the start of episode two, displayed all on the dashboard for
-the rest of the series — it's a great running story ("four people are riding on
-Priya").
+Everyone's top three bakers are revealed **when episode 2 starts airing** — the
+same moment that week's picks go public (§2.5), and two hours after the three
+lock. They stay on the dashboard for the rest of the series; it's a great
+running story ("four people are riding on Priya").
 
 ---
 
@@ -176,7 +226,9 @@ Before the series starts, you name **two bakes** you think will come up.
 
 - **When:** guesses open as soon as the season is set up and lock at **18:00 on
   the Tuesday of episode 1**, alongside that week's normal predictions. The same
-  deadline, the same LATE and VERY LATE flags, the same GM door.
+  deadline, the same LATE and VERY LATE flags, the same GM door — and they ride
+  on that week's entry, so a late save is one late submission and one −2, not
+  three.
 - **What:** free text — a bake, an ingredient, a technique. *"madeleine"*,
   *"croquembouche"*, *"choux"*. You invent it; there is no list to pick from.
 - **Two different guesses**, and you are stuck with them for the series.
@@ -241,15 +293,20 @@ can see what happened.
 
 ### When everyone sees them
 
-**Guesses go public at episode 1's deadline**, the same moment they lock, and
-the same way everyone's three go public at episode 2's.
+**Guesses go public when episode 1 starts airing** — two hours after they lock,
+the same way everyone's three go public when episode 2 airs.
 
-> **A late guess is the GM's judgement call.** Once the deadline passes the
-> guesses are public, so anyone submitting after it — LATE or VERY LATE — can
-> already see what everyone else took, and could pick something nobody has to
-> guarantee themselves +5. The GM can strike a guess out, which removes it from
-> scoring *and* from the count of who said what — so striking one out cannot
-> cost anybody else their points.
+The gap is on purpose, and it does two jobs. A guess is worth +5 precisely for
+being one nobody else thought of, so nobody should be able to read the list
+while there is still time to write their own. And it gives the GM their window
+to unify the wordings (below) before anyone else is looking.
+
+> **A very late guess is the GM's judgement call.** A LATE guesser is guessing
+> blind like everybody else, so the −2 is the whole of their penalty. A VERY
+> LATE one is let in after the reveal, can see what everyone else took, and
+> could pick something nobody has to guarantee themselves +5. The GM can strike
+> a guess out, which removes it from scoring *and* from the count of who said
+> what — so striking one out cannot cost anybody else their points.
 
 ---
 
@@ -261,8 +318,10 @@ The player with the most points at the end of the final wins.
 
 1. Most correct **Best Baker** calls across the series
 2. Most correct **Leaving Baker** calls
-3. Fewest penalty points incurred
-4. Earliest average submission time (the person who was consistently organised)
+3. Fewest **−1 penalty points** incurred (§2.3 — the two about picks, not the
+   deadline one, which #4 already measures better)
+4. Most weeks in on time (the person who was consistently organised), and then
+   earliest average submission time
 
 If that somehow doesn't separate them, it's a shared title.
 
@@ -271,11 +330,11 @@ If that somehow doesn't separate them, it's a shared title.
 ## 8. Fair play
 
 - Predictions are **invisible to everyone else** — including the GM's dashboard —
-  until the deadline passes. After that they're all public.
-- **Bake guesses are invisible to everyone, the GM included, until they lock**
-  at episode 1's deadline — at which point they all go public at once (§6). The
-  GM sees them no earlier than anybody else, and by then their own two are
-  locked like everybody's.
+  until the episode starts airing. After that they're all public. The GM's panel
+  is held to the same clock as everyone else's, because the GM is a player.
+- **Bake guesses are invisible to everyone, the GM included, until episode 1
+  airs** (§6). They lock two hours earlier, at the deadline, so by the time the
+  GM can read anybody's their own two are as locked as everybody's.
 - The GM is a player too, but the GM enters results *after* the deadline has
   locked their own entry like everybody else's.
 - The GM's rulings on the Bingo Bonus, and on whether a category went to Nobody,
@@ -299,13 +358,16 @@ EVERY WEEK                          ONCE, BEFORE EPISODE 1
   Best Baker who left   −1          END OF SERIES
   Leaving Baker who     −1            Top-3 baker reaches final   +3 each
     got Star Baker                    Series winner in your top 3 +6
-
-  Max 13/week                       FINAL WEEK
-                                      Winner of Bake Off          +5
-DEADLINE                              Technical / Bingo / Handshake +2 each
-  18:00 Tuesday — the day of the
-  episode. After that: LATE.        Perfect series ≈ 140+
-  Panel locks when it starts airing.
+  Nothing in by 18:00   −2
+                                    FINAL WEEK
+  Max 13/week, min −4/week            Winner of Bake Off          +5
+                                      Technical / Bingo / Handshake +2 each
+DEADLINE
+  18:00 Tue — picks close.          Perfect series ≈ 140+
+    Anything after that costs −2,
+    including nothing at all.
+  20:00 — it airs. Panel locks,
+    and everyone's picks go public.
 ```
 
 ---
@@ -315,6 +377,11 @@ DEADLINE                              Technical / Bingo / Handshake +2 each
 | Question | Settled as |
 |----------|------------|
 | Hard lock when the episode starts airing? | **Yes, by default** — GM can open the door per player, per week, stamped VERY LATE |
+| Does being late cost anything? | **−2**, and so does not submitting at all or saving an empty card. Charged once per week, never twice |
+| Is VERY LATE worse than LATE? | **No — the same −2.** The GM already vets that door, and Disallow is the tool for bad faith. A flat fee is also what keeps a latecomer playing rather than giving up |
+| Do the top three and the bake guesses carry their own −2? | **No.** They ride on that week's entry, so one late save is one late submission. Lateness on them is the GM's strike-out, as §6 already said |
+| When do picks go public? | **When the episode airs**, not at the deadline. Otherwise a LATE entry is written with the whole league's card on screen, which is worth far more than 2 points |
+| Does an on-time entry lock itself at the deadline? | **No** — you may still change it, but the panel disables the form and makes you press *Edit anyway* first. The price is real; the accident shouldn't be |
 | "No handshake this week" as a pick? | **No** — the GM records the handshake as going to **Nobody**, and it pays no one |
 | Bingo: first baker it happens to, or all of them? | **All** — everyone who named a correct baker scores |
 | Final week card | **Winner +5**, no Leaving Baker, no penalty |

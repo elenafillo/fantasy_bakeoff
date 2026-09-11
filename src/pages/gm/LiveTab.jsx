@@ -31,7 +31,13 @@ export function LiveTab({ state, send, busy }) {
           {episode.deadline_at && (
             <span className={`pill ${state.picksPublic ? 'ok' : ''}`}>
               <span className="dot" />
-              {state.picksPublic ? 'Picks are public' : `Deadline ${ukTime(episode.deadline_at)}`}
+              {/* Two moments: picks close at the deadline, and go public when it
+                  airs. Until then this shows the one still ahead — and the
+                  order matters, because between them the picks are closed but
+                  still sealed, including from the GM. */}
+              {state.picksPublic
+                ? 'Picks are public'
+                : `Deadline ${ukTime(episode.deadline_at)}${episode.live_at ? ` · public ${ukTime(episode.live_at)}` : ''}`}
             </span>
           )}
         </div>

@@ -57,11 +57,16 @@ where s.name = 'GBBO 2026'
 -- date in the GM panel and the 18:00 UK deadline follows, British Summer Time
 -- included.
 --
--- Until a date is set, deadline_at stays NULL, which means v_public_predictions
--- keeps that episode's picks private. Failing closed is the intended behaviour.
+-- Until a date is set BOTH derived moments stay NULL, and both matter: a null
+-- live_at means v_public_predictions keeps that episode's picks private, and a
+-- null deadline_at means nobody is charged the −2 for not having entered a week
+-- that has no date yet (RULES §2.5). Failing closed in both directions is the
+-- intended behaviour.
 --
--- Episode 10 is the final: no Star Baker, no elimination, no penalty, and the
--- 'winner' category instead. RULES §4.
+-- Episode 10 is the final: no Star Baker, no elimination, and the 'winner'
+-- category instead. Neither −1 can fire there — there is no Leaving Baker or
+-- Star Baker to be wrong about — but the deadline penalty still applies, since
+-- a deadline is a deadline. RULES §4.
 
 insert into episodes (season_id, number, is_final)
 select s.id, n, (n = 10)

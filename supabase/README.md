@@ -16,10 +16,11 @@ failed run can be fixed and re-run.
 **any** change to `views.sql`.
 
 **Re-pasting after a change usually means `views.sql` → `rls.sql` → smoke test.
-Phase 8 is the exception**: the bake guess added two TABLES, so `schema.sql` has
-to go first or `views.sql` has nothing to read. It is `create table if not
-exists` throughout, so re-pasting it is safe on a live database and changes
-nothing that is already there.
+Phases 8 and 9 are the exceptions**: the bake guess added two TABLES and the
+deadline penalty added a COLUMN (`entries.first_submitted_at`), so `schema.sql`
+goes first both times or `views.sql` has nothing to read. It is `create table if
+not exists` plus `add column if not exists` throughout, so re-pasting it is safe
+on a live database and changes nothing that is already there.
 
 The verdict is a `SELECT`, not a `RAISE NOTICE`: notices don't appear in the
 Supabase SQL editor, so a passing run would be indistinguishable from one that
@@ -32,26 +33,37 @@ those views and nothing else, so adding a column or loosening a `WHERE` publishe
 data to the internet. The one that matters most:
 
 ```sql
-where ep.deadline_at is not null    -- fails closed: no deadline = not public
-  and ep.deadline_at <= now();
+where ep.live_at is not null    -- fails closed: no air time = not public
+  and ep.live_at <= now();
 ```
 
-That is the whole of "nobody sees your picks before the deadline". Hiding
+That is the whole of "nobody sees your picks before the episode airs". Hiding
 predictions in the UI would be defeated by anyone opening devtools.
 
-**That shape now appears three times, on three different clocks**, and each one
+**It is the REVEAL, not the deadline.** The two came apart in RULES §2.5: 18:00
+closes the picks and prices lateness at −2, 20:00 airs the episode and publishes
+every card. Gating the reveal on the deadline would mean a LATE entry was written
+with the whole league's picks on screen — worth far more than 2 points is a
+deterrent. Both moments derive from `air_date` through the same trigger.
+
+**That shape appears three times, on three different clocks**, and each one
 fails closed on a null date:
 
 | View | Gate | Protects |
 |---|---|---|
-| `v_public_predictions` | episode's own `deadline_at` | this week's picks |
-| `v_top_picks_public` | **episode 2's** `deadline_at` | whose three is whose |
-| `v_series_guesses_public` | **episode 1's** `deadline_at` | everyone's bake guesses |
+| `v_public_predictions` | episode's own `live_at` | this week's picks |
+| `v_top_picks_public` | **episode 2's** `live_at` | whose three is whose |
+| `v_series_guesses_public` | **episode 1's** `live_at` | everyone's bake guesses |
 
-One shape, three episodes. Each is **derived from an episode** rather than
-stored or hung off a button, so it follows `air_date` through the deadline
-trigger and there is nothing for a GM to remember. The bake guess briefly gated
-on `live_at` instead — see TECH_PLAN §14 for why that was a bug.
+A **fourth** copy of the rule is not a view: `api/gm.js`'s `picksPublic` and
+`buildGuesses`'s `visible`. The GM is a player, so the panel is held to the same
+clock (RULES §8) — move the views without those and the one person entering
+results gets a private two-hour look at everyone's card.
+
+Each gate is **derived from an episode** rather than stored or hung off a button,
+so it follows `air_date` and there is nothing for a GM to remember. That last
+part is why `live_at` is safe to gate on *now* and was not before — see
+TECH_PLAN §14, where the history inverts.
 
 **The views are security-definer on purpose.** They read their tables as the
 view owner, which is how they can expose a slice of a table the browser has no
@@ -97,8 +109,8 @@ as another player. A failed login sleeps 400ms, which slows a script rather than
 stopping one.
 
 For a league of friends this is the right trade — codes are cheap to reissue and
-predictions become public at the deadline anyway. If it ever matters, the fix is
-a small `login_attempts` table keyed by IP.
+predictions become public once the episode airs anyway. If it ever matters, the
+fix is a small `login_attempts` table keyed by IP.
 
 ## Still to seed
 

@@ -167,7 +167,7 @@ function lockState(episode, entry, now) {
  *
  * `picks` is the player's OWN three and is returned whatever the clock says —
  * this endpoint is authenticated by the code, and you may always see your own.
- * Everyone else's stays behind v_top_picks_public until episode 2's deadline.
+ * Everyone else's stays behind v_top_picks_public until episode 2 airs.
  */
 async function topThreeState(player, seasonId, currentEp, currentEntry, now) {
   const [episodes, picks] = await Promise.all([
@@ -428,6 +428,16 @@ async function buildState(player) {
       is_disallowed: entry.is_disallowed,
       gm_unlocked: entry.gm_unlocked_at !== null,
       submitted_at: entry.submitted_at,
+      // The first save, which submitted_at no longer remembers. The panel shows
+      // both when they differ — that pair is the whole story of an entry that
+      // was in on time and then edited into a penalty.
+      first_submitted_at: entry.first_submitted_at ?? null,
+      // Whether there is anything in this entry at all. An entry row with no
+      // picks is NOT a submission (RULES §2.5, v_penalties' no_entry arm), so
+      // /play must treat it as an empty card rather than as an entry to protect
+      // from editing — otherwise it would lock somebody out of a week they have
+      // not actually played and let the -2 stand.
+      picks_made: Object.keys(picks).length,
     },
     editable: !lock.locked,
     lockReason: lock.reason ?? null,
@@ -527,8 +537,20 @@ async function savePicks(res, player, body) {
       player_id: player.id,
       episode_id: episode.id,
       submitted_at: now.toISOString(),
+      // Stamped on the FIRST save and never again, so it is sent only when
+      // there is no entry yet. PostgREST's upsert updates exactly the columns
+      // the payload names, so leaving it out of an edit is what protects it —
+      // there is no way to say `coalesce(first_submitted_at, excluded...)` over
+      // the wire, and this is the same thing done from the other side.
+      //
+      // It exists because the line below overwrites submitted_at, and with a
+      // penalty riding on lateness the difference between "in at 17:42, edited
+      // at 18:06" and "in at 18:06" is a conversation with the GM.
+      ...(entry ? {} : { first_submitted_at: now.toISOString() }),
       // Recomputed on every save on purpose: editing your picks after the
       // deadline IS a late submission, even if the first version was on time.
+      // That now costs 2 points (RULES §2.5), which is why /play puts the edit
+      // behind a button that says so rather than letting a stray tap do it.
       lateness: lock.lateness,
     },
     { onConflict: 'player_id,episode_id' }

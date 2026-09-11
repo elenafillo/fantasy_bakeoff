@@ -75,18 +75,21 @@ export function EpisodesTab({ state, send, busy }) {
           />
           <span className="small muted">
             {ep.deadline_at
-              ? `Currently ${ukTime(ep.deadline_at)} UK — everyone's picks go public at that moment.`
-              : 'No deadline: nobody can be late, and every pick stays private.'}
+              ? `Currently ${ukTime(ep.deadline_at)} UK — picks close, and anything saved after it costs the player 2 points.`
+              : 'No deadline: nobody can be late, and nobody is charged for not entering.'}
             {' '}Shown in this device&rsquo;s time zone.
           </span>
         </label>
 
-        {/* The hard lock, and it used to be a button. "Go live" stamped this
-            with the server clock when the GM pressed it mid-episode — so
-            RULES §2.5's promise that the panel locks when the episode starts
-            rested on somebody remembering. It is derived from the air date now
-            and sits here beside the deadline, because the two are the same kind
-            of thing: one moment closes the picks, the other closes the panel. */}
+        {/* The hard lock AND the reveal, and it used to be a button. "Go live"
+            stamped this with the server clock when the GM pressed it mid-episode
+            — so RULES §2.5's promise that the panel locks when the episode
+            starts rested on somebody remembering. It is derived from the air
+            date now and sits here beside the deadline, because the two are the
+            same kind of thing: one closes the picks and prices lateness, the
+            other closes the panel and publishes every card. Moving this moves
+            when the league sees each other's picks, which is worth knowing
+            before nudging it for an episode that airs late. */}
         <label className="field">
           <span className="picker-label">Locks at</span>
           <input
@@ -97,8 +100,8 @@ export function EpisodesTab({ state, send, busy }) {
           />
           <span className="small muted">
             {ep.live_at
-              ? `Currently ${ukTime(ep.live_at)} UK — after this, only players you open a door for can submit.`
-              : 'No lock: nobody is shut out, however late they submit.'}
+              ? `Currently ${ukTime(ep.live_at)} UK — everyone's picks go public at that moment, and after it only players you open a door for can submit.`
+              : 'No lock: nobody is shut out, and every pick stays private.'}
             {' '}Set from the air date at 20:00. Change it for a week that airs
             at an odd hour — though moving the air date afterwards will reset it,
             the same as it does the deadline.

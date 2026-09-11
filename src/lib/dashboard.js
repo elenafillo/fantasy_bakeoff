@@ -10,12 +10,17 @@
 // never on a poll, and only for a browser that logged in before playerApi.js
 // started caching the answer.
 //
-// THE PREDICTION WALL IS SUPPOSED TO BE EMPTY BEFORE THE DEADLINE. It reads
+// THE PREDICTION WALL IS SUPPOSED TO BE EMPTY UNTIL THE EPISODE AIRS. It reads
 // v_public_predictions, whose WHERE clause is the whole of "nobody sees your
 // picks early":
 //
-//   where ep.deadline_at is not null    -- no deadline set = not public
-//     and ep.deadline_at <= now();
+//   where ep.live_at is not null    -- no air time set = not public
+//     and ep.live_at <= now();
+//
+// The reveal is the BROADCAST, not the deadline, and the two are two hours
+// apart: 18:00 closes the picks and prices lateness at −2, 20:00 publishes
+// everything (RULES §2.5). That gap is what makes a LATE entry harmless — the
+// latecomer cannot see anybody else's card while writing their own.
 //
 // Episodes are seeded with no date, so an empty wall is the normal state of
 // this project today and is the system working. Never read `predictions` or
@@ -258,7 +263,7 @@ export async function fetchLive(league) {
           params: { episode_id: `eq.${wallEpisode.id}`, player_id: inLeague },
         })
       : [],
-    // Empty until episode 2's deadline, by design — v_top_picks_public applies
+    // Empty until episode 2 airs, by design — v_top_picks_public applies
     // the same fail-closed gate as v_public_predictions, on episode 2's clock
     // (RULES §5). The board says which of the two reasons applies rather than
     // showing a blank, exactly as the prediction wall does.

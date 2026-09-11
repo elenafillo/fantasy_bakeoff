@@ -122,12 +122,14 @@ create table if not exists episodes (
   number       int  not null,
   theme        text,
   air_date     date,
-  -- 18:00 UK on the day of the episode. Derived from air_date by the trigger
-  -- below. NULL until the schedule is announced — and a NULL deadline means
-  -- predictions stay private (views.sql fails closed on this).
+  -- 18:00 UK on the day of the episode: PICKS CLOSE. Derived from air_date by
+  -- the trigger below. NULL until the schedule is announced — and a NULL
+  -- deadline means nobody can be late for that episode, so v_penalties charges
+  -- nobody the −2 for it (RULES §2.5). It does NOT gate privacy; live_at does.
   deadline_at  timestamptz,
   -- 20:00 UK on the day of the episode — when it goes on air. THE HARD LOCK,
-  -- and the boundary between LATE and VERY LATE.
+  -- the boundary between LATE and VERY LATE, and THE REVEAL: every public view
+  -- gates on this, so a NULL live_at keeps an episode's picks private.
   --
   -- Derived from air_date by the same trigger as the deadline, and it used to
   -- be stamped by hand instead: a "Go live" button the GM pressed as the
@@ -137,8 +139,10 @@ create table if not exists episodes (
   -- submit at 21:15 having watched the technical, flagged only LATE.
   --
   -- Two derived moments now, from one date: picks close at 18:00, the panel
-  -- locks at 20:00. Both are overridable per episode for a week that airs at
-  -- an odd hour — the trigger only fills in what the caller left alone.
+  -- locks and everything goes public at 20:00. Both are overridable per episode
+  -- for a week that airs at an odd hour — the trigger only fills in what the
+  -- caller left alone. Moving this one moves when the league sees each other's
+  -- cards, which is worth knowing before nudging it.
   live_at      timestamptz,
   bingo_prompt text,
   -- 'live' is legacy and nothing sets it any more: whether an episode is on
@@ -291,7 +295,20 @@ create table if not exists entries (
   id             uuid primary key default gen_random_uuid(),
   player_id      uuid not null references players(id) on delete cascade,
   episode_id     uuid not null references episodes(id) on delete cascade,
+  -- The LATEST save. Overwritten every time the player touches their card,
+  -- which is exactly why the column below had to exist.
   submitted_at   timestamptz not null default now(),
+  -- The FIRST save, written once and never again — api/player.js sets it on
+  -- insert only.
+  --
+  -- It was free to lose this while LATE was a label. Now that missing the
+  -- deadline costs 2 points (RULES §2.5), a player who was in at 17:42 and
+  -- edited at 18:06 has a story worth being able to tell, and submitted_at
+  -- alone cannot tell it — the edit erases the evidence of the on-time save.
+  -- This is also the column RULES §7's fourth tiebreak means by "earliest
+  -- average submission time"; submitted_at would quietly reward never going
+  -- back to look at your card.
+  first_submitted_at timestamptz,
   confirmed_at   timestamptz,
   -- Computed server-side in api/player.js from submitted_at against the
   -- episode's deadline_at / live_at. The client's clock is never trusted.
@@ -304,6 +321,17 @@ create table if not exists entries (
 );
 
 create index if not exists entries_episode_idx on entries (episode_id);
+
+-- Backfill, for a database created before first_submitted_at existed. An entry
+-- nobody ever edited has submitted_at as its honest first save; one that WAS
+-- edited has no record of the original anywhere, and submitted_at is the
+-- closest thing to an answer. Idempotent — a row that already has one is left
+-- exactly as it is, the same way the live_at backfill above leaves an override.
+alter table entries add column if not exists first_submitted_at timestamptz;
+
+update entries
+   set first_submitted_at = submitted_at
+ where first_submitted_at is null;
 
 -- ------------------------------------------------------------
 -- Predictions — one row per category
@@ -424,9 +452,10 @@ create index if not exists guess_hits_episode_idx on guess_hits (episode_id);
 -- It stored the moment the top three lock, which RULES §5 defines as 18:00 on
 -- the Tuesday before episode 2 — i.e. episode 2's own deadline. Storing it
 -- separately meant two dates that could disagree, and a second GM control to
--- keep in step. Both the lock (api/player.js) and the reveal
--- (v_top_picks_public) now derive from episode 2's `deadline_at`, so there is
--- exactly one answer and it follows `air_date` through the trigger below.
+-- keep in step. The lock (api/player.js) derives from episode 2's
+-- `deadline_at` and the reveal (v_top_picks_public) from its `live_at` — two
+-- moments doing two jobs since RULES §2.5, both following `air_date` through
+-- the trigger below, and neither of them stored anywhere else.
 --
 -- Left in place rather than dropped because dropping it buys nothing. DO NOT
 -- wire it back up: a second source of truth for the lock is the bug this

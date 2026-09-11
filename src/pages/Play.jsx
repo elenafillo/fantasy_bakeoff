@@ -121,6 +121,14 @@ function Entry({ state, code, setState, onOut }) {
   const [error, setError] = useState(null)
   const [flash, setFlash] = useState(null)
 
+  // Has the player deliberately opened an on-time entry for editing after the
+  // deadline? Purely local, and deliberately NOT a rule: the server keeps one
+  // lock ladder for the picks, the top three and the guesses (api/player.js),
+  // and a save at 18:05 is allowed whatever this says. All it does is make the
+  // 2-point path a decision instead of a stray tap — the one failure mode that
+  // is nobody's fault and still costs them points.
+  const [unlocked, setUnlocked] = useState(false)
+
   // Re-sync when the server sends a new state. Done during render rather than
   // in an effect: an effect would paint one frame of the old picks first, and
   // React's own guidance is to adjust state directly when it derives from a
@@ -132,6 +140,16 @@ function Entry({ state, code, setState, onOut }) {
     setPicks(state.picks)
     setDirty(false)
   }
+
+  // NOTE WHAT IS NOT RESET ABOVE: `unlocked`. It was, and that was a bug —
+  // every response carries a fresh `state.picks` object, so confirming,
+  // un-confirming or simply coming back to the tab slammed the gate shut on
+  // somebody who had already said "Edit anyway". Confirm in particular is not
+  // an edit and has no business changing whether the form is open.
+  //
+  // Nothing is lost by letting the decision stand for the visit: `guarded`
+  // stops applying the moment the entry is actually stamped late, and `frozen`
+  // still honours `!editable`, so 20:00 closes the form whatever this says.
 
   const countdown = useCountdown(episode?.deadline_at)
 
@@ -216,6 +234,39 @@ function Entry({ state, code, setState, onOut }) {
 
   const picked = categories.filter((c) => picks[c.key]).length
 
+  // ---- after the deadline (RULES §2.5) ----
+  // Three situations, and they are genuinely different to be in. An entry row
+  // with no picks in it is NOT a submission — the same definition v_penalties
+  // uses — so an empty card counts as A and not as B.
+  const submitted = Boolean(entry) && (entry.picks_made ?? 0) > 0
+  const pastDeadline = editable && wouldBe !== 'on_time'
+  const alreadyCharged = Boolean(entry) && entry.lateness !== 'on_time'
+  // B, and the only one that is guarded: a card that is in on time, which one
+  // careless change would turn into a penalty.
+  const guarded = pastDeadline && submitted && !alreadyCharged && !unlocked
+
+  // ---- Confirm, which now actually does something ----
+  // TWO GUARDS, ONE FORM, and they are different in kind. `guarded` is the
+  // clock's — it protects an on-time card from an accidental −2. This one is
+  // the player's own: Confirm means "I'm done", so it locks their picks until
+  // they say otherwise. Everybody assumed it already worked this way, which is
+  // a reasonable thing to assume of a button labelled Confirm, and it was doing
+  // nothing at all but setting a flag for the GM's list.
+  //
+  // Still no scoring consequence — confirming and un-confirming are free at any
+  // time, because api/player.js's `confirm` deliberately does not re-stamp
+  // lateness. Only a SAVE can cost you anything.
+  const confirmLocked = Boolean(entry?.confirmed)
+
+  const frozen = !editable || guarded || confirmLocked
+
+  // Past the deadline with an on-time card, "Edit anyway" IS the un-confirm
+  // route — it does both in one press. A plain Un-confirm beside it would be a
+  // second door that un-confirms WITHOUT opening the form, which just looks
+  // broken. Confirming while guarded is still offered: it is free, and "I'm
+  // done" is a reasonable thing to say about a card you are not editing.
+  const showConfirmToggle = Boolean(entry) && !dirty && !(guarded && entry.confirmed)
+
   return (
     <>
       <Panel>
@@ -260,7 +311,7 @@ function Entry({ state, code, setState, onOut }) {
           {entry?.lateness && entry.lateness !== 'on_time' && (
             <span className="pill bad">
               <span className="dot" />
-              {entry.lateness === 'late' ? 'Late' : 'Very late'}
+              {entry.lateness === 'late' ? 'Late' : 'Very late'} &middot; &minus;2
             </span>
           )}
           {entry?.confirmed && <span className="pill ok"><span className="dot" />Confirmed</span>}
@@ -280,11 +331,35 @@ function Entry({ state, code, setState, onOut }) {
 
         {!editable && <p className="notice bad">{lockReason}</p>}
 
-        {editable && wouldBe !== 'on_time' && (
+        {pastDeadline && (
+          <DeadlineNotice
+            wouldBe={wouldBe}
+            submitted={submitted}
+            alreadyCharged={alreadyCharged}
+            guarded={guarded}
+            confirmed={confirmLocked}
+            busy={busy}
+            /* Opens the form AND un-confirms, because a confirmed card is
+               locked twice over and one press should clear both — being made to
+               find a second button to undo a decision you have just explicitly
+               made is the kind of thing that gets a panel sworn at. The
+               un-confirm is free; only the save that follows costs anything. */
+            onUnlock={() => {
+              setUnlocked(true)
+              if (entry?.confirmed) send('confirm', { confirmed: false })
+            }}
+          />
+        )}
+
+        {/* Why the picks are greyed, when it is the player's own doing rather
+            than the clock's. Not shown while `guarded` — the notice above is
+            already explaining that, and two explanations for one grey form is
+            worse than none. */}
+        {confirmLocked && editable && !guarded && (
           <p className="notice">
-            {wouldBe === 'late'
-              ? 'The deadline has passed — anything you save now is marked LATE.'
-              : 'The episode has started. The GM opened this for you, so your entry is marked VERY LATE.'}
+            Your entry is <strong>confirmed</strong>, so your picks are locked.
+            Un-confirm below to change them.
+            {!pastDeadline && ' Both are free before the deadline.'}
           </p>
         )}
 
@@ -301,7 +376,7 @@ function Entry({ state, code, setState, onOut }) {
               <select
                 className="input"
                 value={picks[c.key] ?? ''}
-                disabled={!editable || busy || bakers.length === 0}
+                disabled={frozen || busy || bakers.length === 0}
                 onChange={(e) => {
                   setPicks({ ...picks, [c.key]: e.target.value || null })
                   setDirty(true)
@@ -330,7 +405,7 @@ function Entry({ state, code, setState, onOut }) {
               {dirty ? 'Save picks' : 'Saved'}
             </button>
 
-            {entry && !dirty && (
+            {showConfirmToggle && (
               <button
                 className="btn btn-quiet"
                 disabled={busy}
@@ -374,6 +449,81 @@ function Entry({ state, code, setState, onOut }) {
         onSave={(bakerIds) => send('saveTopPicks', { bakerIds })}
       />
     </>
+  )
+}
+
+// ------------------------------------------------------------
+// After the deadline — RULES §2.5
+// ------------------------------------------------------------
+/**
+ * What 18:00 means once it has gone, which depends entirely on what you have
+ * already done about it. Three situations, one fee.
+ *
+ *   A  nothing in yet      you can still submit; it costs 2 points
+ *   B  a card in, on time  editing it costs 2 points
+ *   C  already late        the 2 is spent; editing is free until it airs
+ *
+ * B IS THE ONE THIS EXISTS FOR. Saving is a deliberate act, but changing a
+ * select is not, and api/player.js re-stamps lateness on every save — so before
+ * this, one stray tap on a card that was in at 17:42 quietly cost 2 points.
+ * Hence the form is disabled until "Edit anyway" is pressed.
+ *
+ * It is NOT a lock. The server allows the save either way, and deliberately: it
+ * keeps a single lock ladder across the picks, the top three and the guesses,
+ * and adding a per-player "has submitted" rule to it would mean three ladders
+ * that can drift. This is interaction design standing in for a rule, which is
+ * the right place for it — the price is real, the accident is not.
+ *
+ * THE SECOND GUARD IS THE PLAYER'S OWN: a confirmed entry has its picks locked
+ * too (see `confirmLocked` above). Where both are on, "Edit anyway" clears both
+ * in one press — it un-confirms as well as opening the form — because having to
+ * hunt for a second button to undo a decision you just made is how a panel gets
+ * sworn at. Un-confirming is free; only the save that follows costs anything.
+ *
+ * C is worth saying out loud because the fee is flat: having missed the
+ * deadline, nothing further is lost by carrying on right up to the hard lock at
+ * 20:00, which is exactly the incentive RULES §2.5 is built around.
+ */
+function DeadlineNotice({ wouldBe, submitted, alreadyCharged, guarded, confirmed, busy, onUnlock }) {
+  const veryLate = wouldBe === 'very_late'
+  const flag = veryLate ? 'VERY LATE' : 'LATE'
+
+  if (alreadyCharged) {
+    return (
+      <p className="notice">
+        Your entry is marked <span className="flag">{flag}</span>, and the{' '}
+        <strong>&minus;2</strong> has already been applied. You can change it up to
+        the episode&rsquo;s start time at no extra cost.
+      </p>
+    )
+  }
+
+  if (!submitted) {
+    return (
+      <p className="notice">
+        {veryLate
+          ? 'The episode has started. The GM opened this for you, so whatever you save '
+          : 'The deadline has passed. You can still submit — whatever you save '}
+        is marked <span className="flag">{flag}</span> and costs you{' '}
+        <strong>2 points</strong>.
+      </p>
+    )
+  }
+
+  return (
+    <p className="notice">
+      <strong>Your entry is in, on time.</strong> Changing it now marks it{' '}
+      <span className="flag">{flag}</span> and costs you <strong>2 points</strong>.
+      {confirmed && ' Editing will un-confirm it too.'}
+      {guarded && (
+        <>
+          {' '}
+          <button className="link-btn" disabled={busy} onClick={onUnlock}>
+            Edit anyway (&minus;2)
+          </button>
+        </>
+      )}
+    </p>
   )
 }
 

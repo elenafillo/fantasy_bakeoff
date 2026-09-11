@@ -56,14 +56,34 @@ join leagues l on l.id = p.league_id;
 -- ------------------------------------------------------------
 -- Public predictions — THE load-bearing filter
 -- ------------------------------------------------------------
--- Predictions become visible to everyone the moment their deadline passes, and
--- not one second earlier. This WHERE clause is the whole of that guarantee:
+-- Predictions become visible to everyone the moment the episode goes ON AIR,
+-- and not one second earlier. This WHERE clause is the whole of that guarantee:
 -- hiding picks in the UI would be defeated by anyone opening devtools.
 --
--- `deadline_at is not null` FAILS CLOSED. Episodes are seeded with no date
--- (the schedule isn't announced yet), and NULL <= now() is NULL, not false —
--- but relying on that is one refactor away from disaster. An episode with no
--- deadline is one nobody can be late for, so its predictions stay private.
+-- THE GATE IS `live_at`, NOT `deadline_at`, AND THAT IS THE WHOLE OF RULES
+-- §2.5's NEW SHAPE. The deadline and the reveal used to be the same moment, so
+-- anyone submitting in the 18:00–20:00 window did it with the entire league's
+-- card in front of them — the warning §2.5 gave about VERY LATE applied just as
+-- well to plain LATE, and nothing but that warning stood in the way. Splitting
+-- them gives 18:00 one job and 20:00 the other:
+--
+--   18:00  picks close. Saving after this costs 2 points (v_penalties below).
+--   20:00  the episode airs. The panel hard-locks AND everything goes public.
+--
+-- The useful consequence is structural rather than written down: the only
+-- player who can ever submit having seen someone else's pick is one the GM
+-- deliberately let through the door after 20:00, stamped VERY LATE. Everybody
+-- else, on time or late, is guessing blind.
+--
+-- `live_at is not null` FAILS CLOSED. Episodes are seeded with no date (the
+-- schedule isn't announced yet), and NULL <= now() is NULL, not false — but
+-- relying on that is one refactor away from disaster. An episode with no air
+-- time is one that cannot have aired, so its predictions stay private.
+--
+-- Both moments derive from air_date through schema.sql's trigger, so neither
+-- depends on anybody pressing anything. That was NOT true when this gate was
+-- first considered for live_at — see the long note on v_series_guesses_public,
+-- which records why it was wrong then and right now.
 --
 -- Disallowed entries ARE included, flagged, so the prediction wall can show
 -- them struck through. Every SCORING view below excludes them.
@@ -80,8 +100,8 @@ select
 from entries en
 join predictions pr on pr.entry_id = en.id
 join episodes    ep on ep.id = en.episode_id
-where ep.deadline_at is not null
-  and ep.deadline_at <= now();
+where ep.live_at is not null
+  and ep.live_at <= now();
 
 -- ------------------------------------------------------------
 -- Public top three — the SAME load-bearing filter, on episode 2
@@ -90,16 +110,24 @@ where ep.deadline_at is not null
 -- carries points only and v_baker_stats a count per baker, so a Top Three board
 -- had no way to name anyone.
 --
--- The gate is episode 2's deadline, and that is not a coincidence — RULES §5
--- locks the top three at 18:00 on the Tuesday before episode 2, which IS
--- episode 2's deadline. Deriving it from the episode rather than storing a
--- second date means the two can never disagree, and it follows air_date through
--- schema.sql's trigger for free. `season_settings.top_picks_lock_at` was the
--- stored version of this and is now DEAD — see the note on it in schema.sql.
+-- The gate is episode 2's AIR TIME, and the two halves of that are worth
+-- keeping apart, because they are now different moments:
 --
--- `deadline_at is not null` FAILS CLOSED, exactly as above: no date set, no
--- reveal. Episode 2 has no air date yet, so that is today's live behaviour and
--- an empty board is the system working.
+--   the LOCK    18:00 on the Tuesday before episode 2 — RULES §5, which is
+--               episode 2's own deadline, enforced in api/player.js
+--   the REVEAL  20:00, when episode 2 goes on air — this view
+--
+-- They used to be one moment and one column. Splitting them follows
+-- v_public_predictions for the same reason: a top three committed in the
+-- 18:00–20:00 window should not be chosen by someone reading everybody else's
+-- board. Deriving both from the episode rather than storing dates of their own
+-- means they can never disagree with the week's picks, and they follow air_date
+-- through schema.sql's trigger for free. `season_settings.top_picks_lock_at`
+-- was the stored version of the lock and is now DEAD — see schema.sql.
+--
+-- `live_at is not null` FAILS CLOSED, exactly as above: no date set, no reveal.
+-- Episode 2 has no air date yet, so that is today's live behaviour and an empty
+-- board is the system working.
 --
 -- Carries baker_name for the same reason v_episode_results_public does: by the
 -- time this board matters, some of these bakers are out of the tent and gone
@@ -110,7 +138,7 @@ where ep.deadline_at is not null
 -- from v_standings. Dropping that filter puts a stranger's three on the board.
 --
 -- THERE IS A THIRD GATE OF THIS SHAPE, further down: v_series_guesses_public,
--- on EPISODE 1's deadline. Three secrets, three views, three episodes — and
+-- on EPISODE 1's air time. Three secrets, three views, three episodes — and
 -- each one fails closed on a null date.
 
 create or replace view v_top_picks_public as
@@ -125,8 +153,8 @@ select
 from top_picks tp
 join bakers   b  on b.id = tp.baker_id
 join episodes ep on ep.season_id = b.season_id and ep.number = 2
-where ep.deadline_at is not null
-  and ep.deadline_at <= now();
+where ep.live_at is not null
+  and ep.live_at <= now();
 
 -- ------------------------------------------------------------
 -- Per-prediction scoring
@@ -163,15 +191,44 @@ where en.is_disallowed is false;
 -- ------------------------------------------------------------
 -- Penalties
 -- ------------------------------------------------------------
--- −1 for naming a Best Baker who left, −1 for naming a Leaving Baker who took
--- Star Baker. Both can fire in the same week, so the floor is −2.
--- Voided categories cannot trigger either, since `not voided` filters them out.
+-- TWO FAMILIES, and the difference between them is `category`.
 --
+-- THE PICK PENALTIES (RULES §2.3) — −1 for naming a Best Baker who left, −1 for
+-- naming a Leaving Baker who took Star Baker. Both can fire in the same week.
+-- Voided categories cannot trigger either, since `not voided` filters them out.
 -- `category` says which pick of yours brought the penalty on, so the player
--- panel can put the −1 against that row and explain it in words. It is here,
--- and not worked out in the browser, for the reason the header states: the rule
--- lives in SQL once. A browser deciding for itself when a penalty applies would
--- be a second implementation of a scoring rule, free to drift.
+-- panel can put the −1 against that row and explain it in words.
+--
+-- THE DEADLINE PENALTY (RULES §2.5) — −2, and `category` is NULL, because it is
+-- about the week rather than about any one pick. One rule with three wordings:
+--
+--   nothing live in by 18:00 costs you 2 points.
+--
+--   no_entry    you never submitted, or submitted an empty card, or the GM
+--               disallowed what you did submit
+--   late        your picks are in, stamped after 18:00
+--   very_late   the same, through the GM's door after the episode started
+--
+-- The three are MUTUALLY EXCLUSIVE by construction — the `exists` in the late
+-- arm is the exact negation of the `not exists` in the no_entry arm — so a
+-- player can collect the −2 once per week and never twice. Getting that wrong
+-- is the obvious way to break this: the floor for a week is −4 (both pick
+-- penalties plus the deadline one), not −6.
+--
+-- All three are the same −2 on purpose. Equal magnitudes are what make a late
+-- card strictly better than no card: once 18:00 has gone the fee is already
+-- owed, so there is nothing further to lose by playing, and every incentive to.
+-- A ladder would quietly tell a latecomer not to bother.
+--
+-- THE NULL CATEGORY IS LOAD-BEARING, not a shrug. Scorecard.jsx and
+-- PredictionWall.jsx both find a pick's penalty with `p.category === c.key`, so
+-- a null matches no category and can never light up a pick cell that did
+-- nothing wrong. The panel renders these separately, against the week.
+--
+-- All of it lives here rather than in the browser for the reason the file
+-- header states: the rule lives in SQL once. A browser deciding for itself when
+-- a penalty applies would be a second implementation of a scoring rule, free to
+-- drift from the one that pays out.
 --
 -- NOTE the column order: `category` is appended rather than sitting beside
 -- `reason` where it belongs. CREATE OR REPLACE VIEW may only add columns to the
@@ -213,6 +270,77 @@ where en.is_disallowed is false
       and r.category = 'best'
       and r.voided is false
       and r.baker_id = pr.baker_id
+  )
+
+union all
+
+-- LATE — picks are in, but they were stamped after 18:00. The reason IS the
+-- lateness, so 'late' and 'very_late' reach the panel as two different
+-- sentences while costing the same 2 points.
+--
+-- api/player.js re-stamps `lateness` on EVERY save, which is what makes this
+-- fire for an on-time entry edited after the deadline. That was free when LATE
+-- was a label and is not now, so /play gates the edit behind a button that says
+-- the price. The rule is here; the warning is there.
+--
+-- The `exists` is what keeps this arm and the no_entry arm from overlapping: an
+-- entry with no predictions is not a late submission, it is an absent one, and
+-- it is charged as such below.
+select
+  en.player_id,
+  en.episode_id,
+  en.lateness::text,
+  -2,
+  null::text
+from entries en
+where en.is_disallowed is false
+  and en.lateness <> 'on_time'
+  and exists (select 1 from predictions pr where pr.entry_id = en.id)
+
+union all
+
+-- NO ENTRY — nothing live in by the deadline at all. THE ONLY ARM THAT IS NOT
+-- BUILT ON `entries`, and it cannot be: the player it charges has no entry row
+-- to hang anything off. So the spine is the roster, and every player in a
+-- league playing this season is measured against every episode of it.
+--
+-- `deadline_at is not null and <= now()` IS DOING HEAVY LIFTING. A season is
+-- seeded with ten numbered episodes and no dates, so without it every player
+-- would owe 20 points from the moment the season was created, for weeks that
+-- have not happened. It also means the charge appears at 18:00 and not before,
+-- and that a mis-set date un-charges itself the moment it is corrected.
+--
+-- THREE THINGS COUNT AS NOT SUBMITTING, and all three fall out of the one
+-- `not exists` rather than being special-cased:
+--
+--   no entry row       you never opened the panel
+--   an empty entry     you saved a card with nothing chosen (a real state —
+--                      the GM's Entries tab counts `picks_made > 0` as "in")
+--   a disallowed entry RULES §2.5 says it counts "as if it were never made",
+--                      so it is not made, so it is not in. Deliberate: the
+--                      alternative makes Disallow more lenient than being late.
+--
+-- v_episode_scores' spine has a matching third arm, because a player charged
+-- here has no entry and no guess and would otherwise have no row for the week
+-- to carry the points.
+select
+  p.id,
+  ep.id,
+  'no_entry'::text,
+  -2,
+  null::text
+from players  p
+join leagues  l  on l.id = p.league_id
+join episodes ep on ep.season_id = l.season_id
+where ep.deadline_at is not null
+  and ep.deadline_at <= now()
+  and not exists (
+    select 1
+    from entries     en
+    join predictions pr on pr.entry_id = en.id
+    where en.player_id  = p.id
+      and en.episode_id = ep.id
+      and en.is_disallowed is false
   );
 
 -- ------------------------------------------------------------
@@ -289,29 +417,36 @@ where g.is_disallowed is false;
 -- Public bake guesses — the load-bearing filter a THIRD time, on episode 1
 -- ------------------------------------------------------------
 -- Exactly the same shape as v_top_picks_public, one episode earlier: the bake
--- guesses lock at **episode 1's deadline** and are revealed at the same moment,
--- the way the top three lock and reveal at episode 2's.
+-- guesses lock at **episode 1's deadline** and are revealed when **episode 1
+-- goes on air**, the way the top three lock and reveal around episode 2.
 --
--- `deadline_at is not null` FAILS CLOSED, as everywhere else. Episode 1 has no
--- air date until the schedule is announced, so an empty board is this view
--- working rather than this view broken.
+-- `live_at is not null` FAILS CLOSED, as everywhere else. Episode 1 has no air
+-- date until the schedule is announced, so an empty board is this view working
+-- rather than this view broken.
 --
--- THIS GATED ON `live_at` FIRST, AND THAT WAS A BUG — worth knowing, because
--- `live_at` still looks like the more precise answer to "has episode 1 aired?"
--- It is stamped only by the GM's Go live button and cleared by Take it back,
--- and until this was fixed Take it back was the ONLY route from live to
--- complete — so every episode reached "over" with a null live_at and the board
--- emptied the moment the episode finished. A gate hanging off a button somebody
--- has to remember to press is not a gate. `deadline_at` follows `air_date`
--- through schema.sql's trigger and no button touches it.
+-- THIS GATED ON `live_at` ONCE BEFORE AND IT WAS A BUG THEN — worth reading
+-- before anybody "fixes" it back, because the history inverts. `live_at` used
+-- to be stamped only by the GM's Go live button and cleared by Take it back,
+-- and Take it back was for a while the ONLY route from live to complete — so
+-- every episode reached "over" with a null live_at and this board emptied the
+-- moment the episode finished. A gate hanging off a button somebody has to
+-- remember to press is not a gate, and it was moved to `deadline_at` for that
+-- reason and no other.
 --
--- WHAT THIS COSTS: the GM used to get the list first, in the gap between the
--- lock and the episode airing, and unify the wordings before anybody read them.
--- Now everyone sees it at once. That is survivable because this view publishes
--- `guess_text` — what the player typed, which nothing ever edits — and never
--- `guess_key` as the thing on display. Unifying moves points, not words, and no
--- points can land until a guess is ticked, which is during episode 1 at the
--- earliest. So the GM still has the same few hours; they are just not private.
+-- That objection is dead. `live_at` is now DERIVED from air_date at 20:00 by
+-- schema.sql's trigger, exactly as `deadline_at` is derived at 18:00; Go live
+-- is gone and no button touches either. So the column that was always the more
+-- precise answer to "has episode 1 aired?" is now also a safe one, and the
+-- reveal has moved back onto it — this time deliberately, to put the lock and
+-- the reveal at two different moments (see v_public_predictions).
+--
+-- WHAT THIS BUYS BACK: the GM gets the private window again. Between the lock
+-- and the episode airing they can see the list and unify the wordings before
+-- anybody else reads them, which is what RULES §6 describes and what the
+-- deadline-gated version had quietly taken away. It was survivable either way —
+-- this view publishes `guess_text`, what the player typed, which nothing ever
+-- edits, and never `guess_key` as the thing on display, so unifying moves
+-- points rather than words — but private is how §6 says it works.
 --
 -- Disallowed guesses ARE included, flagged, so the board can show them struck
 -- through — the same choice v_public_predictions makes, for the same reason.
@@ -340,26 +475,38 @@ join episodes e1 on e1.season_id = l.season_id and e1.number = 1
 left join v_guess_scores gs
        on gs.player_id = g.player_id and gs.guess_key = g.guess_key
 left join episodes he on he.id = gs.episode_id
-where e1.deadline_at is not null
-  and e1.deadline_at <= now();
+where e1.live_at is not null
+  and e1.live_at <= now();
 
 -- ------------------------------------------------------------
 -- Per-episode scores
 -- ------------------------------------------------------------
--- One row per player per episode they entered. Entries are the spine, so a
--- player who entered and got everything wrong appears with 0 — distinct from a
--- player who never entered at all, who does not appear. The dashboard needs
--- that difference to draw a flat line rather than a gap.
+-- THE SPINE IS THE GUEST LIST: a (player, episode) pair that is not on it has
+-- no row here, and so is absent from the chart, from the scorecard and from
+-- v_standings' sum. Everything else in this view LEFT JOINs onto it. It has
+-- grown an arm each time something could move a player's score without their
+-- having made picks that week, and the three read in that order:
 --
--- SINCE THE BAKE GUESS, ENTRIES ARE NOT THE WHOLE SPINE. A guess pays in the
--- week it comes up, and that week may be one the player made no picks in — so
--- an entries-only spine would have nowhere to put the points and would silently
--- drop them. The spine is therefore entries UNION the weeks a guess paid in.
+--   entries     a player who entered and got everything wrong appears with 0,
+--               which is not the same as a player who did not enter
+--   guesses     a bake guess pays in the week it COMES UP, which may be a week
+--               its owner made no picks in (RULES §6). An entries-only spine
+--               had nowhere to put those points and dropped them silently
+--   penalties   a player charged for not submitting at all (RULES §2.5) has no
+--               entry and no guess, so this is the only thing that gives their
+--               −2 a week to land in
 --
--- Only a guess that actually PAID pulls in a new row. A guess that came up but
--- was too popular to score has nothing to deliver, and a 0-point row for
--- somebody who sat that week out would put them on the chart for an episode
--- they were never in.
+-- The penalty arm is written against `pens` rather than against the no_entry
+-- reason specifically, which is the useful generalisation: ANY penalty is
+-- guaranteed a row to be carried by, including whatever the fourth one turns
+-- out to be.
+--
+-- NOTE WHAT THAT REVERSES. A guess that came up but was too popular to score
+-- pulls in no row, deliberately: a 0-point row for somebody who sat the week
+-- out would put them on the chart for an episode they were never in. The
+-- penalty arm does exactly that and is right to — the difference is that 0 for
+-- an absentee is noise, and −2 for an absentee is the news. They did not sit
+-- the week out; they missed it, and it cost them.
 --
 -- This is also why guess points get an episode at all, where the top-three
 -- bonus cannot: v_series_bonus carries no episode, so it can never step the
@@ -382,9 +529,16 @@ pens as (
     player_id,
     episode_id,
     sum(points) as penalty_points,
-    -- Which picks brought the penalties on, so the panel can put each −1
-    -- against the row that earned it and say why in words. The browser only
-    -- reads this; deciding when a penalty applies stays in v_penalties.
+    -- What each penalty was for, so the panel can say it in words rather than
+    -- working it out — the browser only reads this; deciding when a penalty
+    -- applies stays in v_penalties.
+    --
+    -- A pick penalty carries the category it came from, and goes against that
+    -- row on the card. The deadline penalty carries a NULL category, because it
+    -- is about the week, and the panel renders it against the week instead. The
+    -- reader tells them apart by that null and nothing else, so it has to
+    -- survive the trip: `order by category` sorts nulls last, which puts the
+    -- week's penalty at the end of the array where the panel expects it.
     jsonb_agg(
       jsonb_build_object('category', category, 'reason', reason, 'points', points)
       order by category
@@ -408,6 +562,8 @@ spine as (
   select player_id, episode_id from live_entries
   union
   select player_id, episode_id from guesses where guess_points <> 0
+  union
+  select player_id, episode_id from pens
 )
 select
   sp.player_id,
@@ -420,9 +576,12 @@ select
   coalesce(pn.penalty_points, 0) as penalty_points,
   coalesce(pk.correct_count, 0)  as correct_count,
   coalesce(pk.picks_made, 0)     as picks_made,
-  -- NULL for a row that exists only because a guess paid: there is no entry, so
-  -- there is no submission to be late. Every reader treats it as a flag rather
-  -- than a value ('late' / 'very_late'), so null reads as "nothing to flag".
+  -- NULL for a row with no entry behind it — one that exists only because a
+  -- guess paid, or because the player is being charged for not submitting.
+  -- There is no submission, so there is nothing to be late. Every reader treats
+  -- this as a flag rather than a value ('late' / 'very_late'), so null reads as
+  -- "nothing to flag" — and for the no_entry case the `penalties` array below
+  -- is what says why the week is negative.
   en.lateness,
   (en.confirmed_at is not null)  as confirmed,
   -- Appended, not placed beside penalty_points where it belongs: CREATE OR
@@ -556,7 +715,14 @@ create or replace view v_episodes_public as
 select
   e.id, e.season_id, e.number, e.theme, e.air_date,
   e.deadline_at, e.live_at, e.bingo_prompt, e.status, e.is_final,
-  (e.deadline_at is not null and e.deadline_at <= now()) as predictions_public,
+  -- "Has everyone's card been revealed?", which since the lock and the reveal
+  -- became two moments is NOT "is it past the deadline?" any more. The name is
+  -- now a little wrong and is kept anyway: create or replace view cannot rename
+  -- a column, and renaming means dropping this view and re-granting it. Read it
+  -- as `predictions_revealed`. It must stay in step with
+  -- v_public_predictions' WHERE clause — that view is the actual boundary, and
+  -- this is only the flag the UI reads to know what it is about to be shown.
+  (e.live_at is not null and e.live_at <= now()) as predictions_public,
   -- On air right now: past its lock time and not yet marked complete. Appended
   -- rather than placed beside status, because CREATE OR REPLACE VIEW may only
   -- add columns to the end.

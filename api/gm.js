@@ -141,7 +141,14 @@ async function buildState({ episodeId }) {
   let picksPublic = false
 
   if (episode) {
-    picksPublic = Boolean(episode.deadline_at) && new Date(episode.deadline_at) <= now
+    // THE REVEAL, NOT THE DEADLINE — the mirror of v_public_predictions' WHERE
+    // clause, and it has to move whenever that does. The GM is a player, so a
+    // panel that showed everyone's picks at 18:00 while the league waited until
+    // 20:00 would hand the one person entering results a two-hour look at cards
+    // nobody else can see. RULES §8 promises they see them no earlier than
+    // anybody else, and this line is the whole of that promise on this side of
+    // the wire.
+    picksPublic = Boolean(episode.live_at) && new Date(episode.live_at) <= now
     ;[results, entries] = await Promise.all([
       rest(
         'episode_results',
@@ -231,11 +238,18 @@ function shapeEntry(en, picksPublic) {
  * along with everybody else's. Before that it sends a count and nothing more,
  * the same rule shapeEntry applies to picks and for the same reason.
  *
- * That is the same moment the public board opens (v_series_guesses_public), so
- * the GM no longer gets the list first. Unifying the wordings therefore happens
- * in the open — which is survivable, because the board shows `guess_text` and
- * nothing ever edits that. Unifying moves points, not words, and no points can
- * land until a guess is ticked.
+ * TWO MOMENTS, AND THIS FUNCTION NOW USES BOTH. `locksAt` is episode 1's
+ * DEADLINE: the instant everybody's pair stops being editable, which is what
+ * the tab counts down to. `visible` is episode 1's AIR TIME, the instant the
+ * public board opens (v_series_guesses_public). They were the same value until
+ * RULES §2.5 split them, and conflating them again in either direction breaks
+ * something real — read from the deadline and the GM sees the list two hours
+ * before the league; read from the air time and the tab tells people their
+ * guesses are still editable when they are not.
+ *
+ * The gap between the two is the GM's window for unifying the wordings before
+ * anybody else reads them, which is how RULES §6 describes the job and which
+ * the deadline-gated version had quietly taken away.
  *
  * `points` and `holders` come from v_guess_scores — the service role reads it
  * even though rls.sql grants it to nobody. The grouping below is display; the
@@ -245,7 +259,7 @@ function shapeEntry(en, picksPublic) {
 async function buildGuesses(season, episodes, players, now) {
   const episodeOne = episodes.find((e) => e.number === 1) ?? null
   const visible =
-    Boolean(episodeOne?.deadline_at) && new Date(episodeOne.deadline_at) <= now
+    Boolean(episodeOne?.live_at) && new Date(episodeOne.live_at) <= now
 
   const ids = players.map((p) => p.id)
   if (ids.length === 0) {

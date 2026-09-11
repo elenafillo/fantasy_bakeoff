@@ -27,7 +27,12 @@ export function Scorecard({ categories, picks, bakerNames, results, week, positi
             <Movement movement={movement} label={label} />
           </strong>
           <div className="small muted">
-            {week
+            {/* A week with no picks in it still has a row now, because the −2
+                for missing the deadline needs somewhere to live — so "did you
+                enter?" is `picks_made`, not the presence of the row. Reading it
+                the old way put "0 of 0 picks right" in front of someone who
+                never entered. */}
+            {week && week.picks_made > 0
               ? `${week.correct_count} of ${week.picks_made} pick${week.picks_made === 1 ? '' : 's'} right`
               : 'You didn’t enter this week.'}
           </div>
@@ -63,12 +68,20 @@ export function Scorecard({ categories, picks, bakerNames, results, week, positi
       {week && (week.penalty_points !== 0 || week.guess_points !== 0) && (
         <div className="score-sums">
           <div><span>Picks</span><span>{signed(week.pick_points)}</span></div>
-          {week.penalty_points !== 0 && (
-            <div className="cost">
-              <span>Penalties</span>
-              <span>{signed(week.penalty_points)}</span>
+
+          {/* ITEMISED, NOT TOTALLED, and that changed when the deadline penalty
+              arrived. A single "Penalties −4" line can now be two unrelated
+              pieces of news — a pick that went badly wrong, and having missed
+              six o'clock — and rolling them together leaves the reader to guess
+              which. Each line's number is the one SQL put in the row; nothing
+              here is added up, and the total below is `points`, also SQL's. */}
+          {(week.penalties ?? []).map((p, i) => (
+            <div className="cost" key={`${p.reason}-${p.category ?? 'week'}-${i}`}>
+              <span>{penaltyLabel(p, categories)}</span>
+              <span>{signed(p.points)}</span>
             </div>
-          )}
+          ))}
+
           {week.guess_points !== 0 && (
             <div><span>Bake guess</span><span>{signed(week.guess_points)}</span></div>
           )}
@@ -172,6 +185,9 @@ function Verdict({ category, pick, bakerNames, results, penalty }) {
 /**
  * RULES §2.3 in the second person. "They" throughout — a baker's pronouns are
  * not something the database knows or needs to.
+ *
+ * Only the pick penalties reach this: the deadline ones carry a null category,
+ * so no Verdict ever matches them, and they are named by penaltyLabel instead.
  */
 function penaltyWording(reason, mine) {
   const who = mine ?? 'your pick'
@@ -183,6 +199,19 @@ function penaltyWording(reason, mine) {
   }
   // A reason this build has not met. Say what is certain rather than guess.
   return `Your pick here cost you a point.`
+}
+
+/**
+ * The short name a penalty goes by in the sums. The deadline ones (RULES §2.5)
+ * are about the week and say so; a pick penalty borrows the category's own
+ * label, so the line points straight at the row above that earned it.
+ */
+function penaltyLabel(penalty, categories) {
+  if (penalty.reason === 'no_entry') return 'No entry'
+  if (penalty.reason === 'late') return 'Late entry'
+  if (penalty.reason === 'very_late') return 'Very late entry'
+  const label = categories.find((c) => c.key === penalty.category)?.label
+  return label ? `${label} penalty` : 'Penalty'
 }
 
 function Detail({ state, mine, answer, winners, penalty }) {

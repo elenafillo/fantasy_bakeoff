@@ -96,9 +96,9 @@ grant select on v_episode_results_public to anon, authenticated;
 
 -- Deliberately NOT granted, and worth stating so nobody adds them later by
 -- reflex: players (codes), entries, predictions, top_picks (private until
--- episode 2's deadline — reached via v_top_picks_public, which applies that
--- gate), series_guesses and guess_hits (private until episode 1 goes live —
--- reached via v_series_guesses_public, which applies THAT gate),
+-- episode 2 AIRS — reached via v_top_picks_public, which applies that gate),
+-- series_guesses and guess_hits (private until episode 1 airs — reached via
+-- v_series_guesses_public, which applies THAT gate),
 -- episode_results (reached via v_baker_stats and v_episode_results_public,
 -- which expose what happened without the row ids or the GM's typing times),
 -- season_settings.

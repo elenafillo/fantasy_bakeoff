@@ -7,8 +7,8 @@
 // The publishable key below is public by design: it ships inside the JS bundle,
 // so anyone can read it and craft their own requests. Everything it can reach is
 // therefore read-only by RLS, and predictions are reachable only through views
-// that filter on `deadline_at < now()`. All writes go through the service-role
-// serverless functions in /api.
+// that filter on `live_at <= now()` — the episode's broadcast, not its deadline.
+// All writes go through the service-role serverless functions in /api.
 //
 // Never add a mutation path here that the database itself would not let a
 // stranger perform.

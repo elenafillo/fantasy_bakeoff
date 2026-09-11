@@ -122,14 +122,19 @@ bingo_prompt, status`
   `'live'` stays in the CHECK constraint because removing a value means
   rewriting it, and an old row may still carry it.
 
-**`entries`** — `id, player_id, episode_id, submitted_at, confirmed_at,
-lateness, is_disallowed, gm_unlocked_at`
+**`entries`** — `id, player_id, episode_id, submitted_at, first_submitted_at,
+confirmed_at, lateness, is_disallowed, gm_unlocked_at`
 
 One row per player per episode. This is where all the entry-level state lives:
 
 - `lateness`: `on_time | late | very_late`, computed **server-side** from
   `submitted_at` against `deadline_at` / `live_at`. The client's clock is never
-  trusted.
+  trusted. Re-stamped on **every** save, so editing an on-time card after 18:00
+  makes it late — which since RULES §2.5 costs 2 points.
+- `submitted_at` is the LATEST save and is overwritten each time;
+  `first_submitted_at` is written once, on insert only. The pair is the only
+  record that an entry was in on time and then edited into a penalty, and it is
+  what RULES §7's fourth tiebreak means by "earliest average submission time".
 - `gm_unlocked_at` — set when the GM opens the door for this player, this week
   (RULES §2.5). Non-null is the only way to write after `live_at`.
 - `is_disallowed` — the GM's switch. Excludes the entry from scoring *and* stats.
@@ -204,7 +209,12 @@ The cost is that "show me my week" needs a small pivot in the UI. Cheap.
 ```sql
 v_prediction_scores  -- one row per prediction, with points won
 v_penalties          -- the two −1s, each tagged with the CATEGORY whose pick
-                     --   brought it on, so the panel can say which
+                     --   brought it on, so the panel can say which; PLUS the
+                     --   deadline −2 (RULES §2.5), tagged with a NULL category
+                     --   because it is about the week and not about a pick.
+                     --   Its no_entry arm is the only thing in this file built
+                     --   on players × episodes rather than on entries — the
+                     --   player it charges has no entry row to hang off
 v_episode_scores     -- player × episode → points, incl. penalties, plus a
                      --   `penalties` jsonb array itemising them by category
 v_standings          -- player → cumulative points, rank
@@ -504,8 +514,10 @@ means retyping it one-handed. Then tabs:
   and **Open the door** to let one player submit late this week.
 
   The GM plays too, so this tab shows how many picks each player has made and
-  not what they are, until the deadline passes. Same rule as
-  `v_public_predictions`, enforced in `api/gm.js` for the same reason.
+  not what they are, until the episode **airs**. Same rule as
+  `v_public_predictions`, enforced in `api/gm.js` for the same reason — and it
+  moved with it when the reveal left the deadline, or the one person entering
+  results would have had a two-hour look at cards nobody else could see.
 - **Players** — add players, issue codes, assign colour, per league. No delete:
   it cascades to every entry and prediction, and a name typed wrong can be
   retyped.
@@ -885,38 +897,43 @@ a freebie or a carve-out. Locking with the first weekly picks means all ten
 episodes are live, the guess is completely blind, and week 1 has something to
 do. It also keeps week 2 from carrying both this and the top three.
 
-### Locked and revealed at episode 1's deadline
+### Locked at episode 1's deadline, revealed when it airs
 
-The same instant, and the same shape as the top three one episode later: the
-guesses lock and go public at episode 1's `deadline_at`, where the three lock
-and go public at episode 2's. Fail-closed on a null deadline, no new machinery.
+The same shape as the top three one episode later: the guesses **lock** at
+episode 1's `deadline_at` and **go public** at its `live_at`, where the three
+lock at episode 2's deadline and go public when episode 2 airs. Fail-closed on a
+null date, no new machinery.
 
-**This first gated on `live_at`, and that was a bug worth recording**, because
-`live_at` still looks like the more precise answer to "has episode 1 aired?"
-It was then stamped by the Go live button and cleared by Take it back — and Take
-it back was the *only* route from `live` to `complete`, so every episode reached
-"over" with a null `live_at` and the board emptied exactly when the episode
-finished. Elena found it within minutes of the first paste. The gate moved to
-`deadline_at`, which follows `air_date` through schema.sql's trigger and depends
-on no button at all.
+**THE HISTORY OF THIS GATE INVERTS, so read it before "fixing" it.** It first
+read `live_at` and that was a bug: `live_at` was then stamped by the Go live
+button and cleared by Take it back — and Take it back was the *only* route from
+`live` to `complete`, so every episode reached "over" with a null `live_at` and
+the board emptied exactly when the episode finished. Elena found it within
+minutes of the first paste, and the gate moved to `deadline_at`, which depends on
+no button at all.
 
 Reviewing that button afterwards is what removed it altogether — the same
-weakness applied to the hard lock itself, which is a far more consequential
-thing to leave hanging off a tap. `live_at` is now derived at 20:00, `status`
-has lost its `live` value, and "is it on air" is a comparison. See §3.
+weakness applied to the hard lock itself, which is a far more consequential thing
+to leave hanging off a tap. `live_at` is now derived at 20:00, `status` has lost
+its `live` value, and "is it on air" is a comparison. See §3.
 
-**What the old design bought, and what losing it costs.** The gap between lock
-and reveal was the GM's private window to unify wordings. It is gone: the GM now
-sees the list at the same moment as everyone else. That is survivable because
-the board publishes `guess_text` — what the player typed, which nothing ever
-edits — and never `guess_key`. Unifying moves points, not words, and no points
-can land until a guess is ticked, which is during episode 1 at the earliest. So
-the GM still has the same few hours; they are simply not private.
+**Which is what let the reveal move back onto `live_at` in phase 9**, this time
+deliberately: `deadline_at` and `live_at` are now two derived moments doing two
+different jobs, and the reveal belongs to the broadcast. The smoke test opens
+this gate by setting an **air date** and letting the trigger derive the rest, so
+"follows the schedule, not a button" is pinned rather than assumed.
 
-**What it costs that is real:** RULES §6's late-guess warning now applies to
-LATE as well as VERY LATE. Anyone submitting after the deadline can see what
-everybody took and pick something nobody has. The answer is the same as before —
-`is_disallowed` and the GM's judgement — and the rules say so.
+**What that buys back.** The gap between lock and reveal is the GM's private
+window to unify wordings, which the deadline-gated version had quietly removed
+and which RULES §6 describes as part of the job. It was survivable either way —
+the board publishes `guess_text`, what the player typed, which nothing ever
+edits, and never `guess_key` — but private is how §6 says it works.
+
+**And it narrows the late-guess problem back to VERY LATE.** With the reveal at
+the broadcast, a LATE guesser is guessing blind like everyone else and the −2 is
+the whole of their penalty. Only a VERY LATE one arrives after the list is
+public and could pick something nobody has; `is_disallowed` and the GM's
+judgement are the answer there, and the rules say so.
 
 ### The GM ticks; SQL still scores
 
@@ -964,9 +981,10 @@ where the GM is also a player.
       that came up, keyed on the canonical form so one tick covers every player
       holding it. Unique on `(season_id, guess_key)`: a guess pays once, and
       that constraint IS the rule rather than a check the view performs.
-- [x] **`v_series_guesses_public`** — gated on episode 1's `deadline_at`,
-      granted in `rls.sql`. Carries the hit and its episode as well as the
-      words, so the board needs one query rather than two.
+- [x] **`v_series_guesses_public`** — gated on episode 1's `live_at` (its
+      `deadline_at` until phase 9 split the lock from the reveal), granted in
+      `rls.sql`. Carries the hit and its episode as well as the words, so the
+      board needs one query rather than two.
 - [x] **`v_guess_scores`** — per player per guess: `holders`, the hit's
       `episode_id`, and `points` by the table above. **Not granted** — it names
       the guesser beside the guess with no gate of its own.

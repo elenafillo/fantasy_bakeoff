@@ -28,9 +28,9 @@ export function TopThreeBoard({ topPicks, standings, episodeTwo }) {
         <p className="muted">
           {!episodeTwo
             ? 'There is no episode 2 yet, so nobody has committed to a top three.'
-            : episodeTwo.deadline_at
-              ? 'Everyone’s top three appear here the moment episode 2’s deadline passes.'
-              : 'Episode 2 has no deadline yet, so nobody can be late for it and nobody’s three are public. They appear here as soon as the schedule is set.'}
+            : episodeTwo.live_at
+              ? 'Everyone’s top three appear here the moment episode 2 starts airing.'
+              : 'Episode 2 has no date yet, so nobody can be late for it and nobody’s three are public. They appear here as soon as the schedule is set.'}
         </p>
       </Panel>
     )

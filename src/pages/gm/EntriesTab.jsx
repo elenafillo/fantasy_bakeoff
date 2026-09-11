@@ -58,8 +58,8 @@ export function EntriesTab({ state, send, busy, leagueId = ALL }) {
 
       <p className="small muted">
         {picksPublic
-          ? 'The deadline has passed, so everyone’s picks are public — including here.'
-          : 'You play too, so until the deadline this shows how many picks each person has made and not what they are.'}
+          ? 'The episode has started, so everyone’s picks are public — including here.'
+          : 'You play too, so until the episode airs this shows how many picks each person has made and not what they are. The deadline closing does not open this: you see them when the league does.'}
       </p>
 
       {all.length === 0 && (

@@ -35,6 +35,7 @@ late September 2026), so nothing is time-pressured yet.
 | 6 — `/bakers`, `/rules`, top-three picks, stats | ✅ **Done.** All four: `/bakers`, the top three (picker on `/play`, board on `/`), the stats strip and `/rules`. SQL applied and the smoke test passes. |
 | 7 — avatar builder, visual polish | ⬜ Not started, but **the spec and the art brief are written** — DESIGN §11, [ASSETS.md](ASSETS.md), `src/avatar/TEMPLATE.svg` |
 | 8 — the bake guess | ✅ **Done.** Two bakes per player before episode 1, ticked weekly by the GM, scored 5/2/0 in SQL. **Two new tables**, so `schema.sql` is pasted first this time — see below and TECH_PLAN §14 |
+| 9 — the deadline penalty | ✅ **Done.** Missing the deadline costs −2 (RULES §2.5), and the reveal moved from the deadline to the broadcast so a latecomer still guesses blind. `schema.sql` → `views.sql` → `rls.sql` applied, smoke test passing. Confirm became a real lock on your own picks |
 | — multiple leagues, GM half | ✅ **Done**, outside the phase numbering. The Leagues tab, `upsertLeague`, and league scoping on Entries and Players. **No SQL, no new grant, nothing to paste.** The dashboard switcher is built too — a button per league at the foot of the page, scoped to the season so the demo leagues stay off it |
 
 Live database state: league **In The Oven** (`in-the-oven`, default), 2 players,
@@ -69,42 +70,64 @@ filtered slice of tables the browser cannot touch. Adding a column or loosening 
 The single load-bearing line:
 
 ```sql
-where ep.deadline_at is not null    -- fails closed: no deadline set = not public
-  and ep.deadline_at <= now();
+where ep.live_at is not null    -- fails closed: no air time set = not public
+  and ep.live_at <= now();
 ```
 
-That is the whole of "nobody sees your picks before the deadline". Episodes are
-seeded with a null date, so failing closed is not theoretical.
+That is the whole of "nobody sees your picks before the episode airs". Episodes
+are seeded with a null date, so failing closed is not theoretical.
 
-**That line now appears three times, on three different clocks.**
+**That line appears three times, on three different clocks.**
 
 | View | Gate | Protects |
 |---|---|---|
-| `v_public_predictions` | the episode's own `deadline_at` | this week's picks |
-| `v_top_picks_public` | **episode 2's** `deadline_at` | whose three is whose |
-| `v_series_guesses_public` | **episode 1's** `deadline_at` | everyone's bake guesses |
+| `v_public_predictions` | the episode's own `live_at` | this week's picks |
+| `v_top_picks_public` | **episode 2's** `live_at` | whose three is whose |
+| `v_series_guesses_public` | **episode 1's** `live_at` | everyone's bake guesses |
 
 `v_top_picks_public` carries the same clause against episode 2 because RULES §5
-reveals everyone's top three at the start of episode 2 — which is episode 2's
-deadline. Anything reading `top_picks` goes through that view,
-`v_baker_stats.in_top_threes` included; reading the base table is how the count
-leaked before phase 6 fixed it.
+reveals everyone's top three at the start of episode 2. Anything reading
+`top_picks` goes through that view, `v_baker_stats.in_top_threes` included;
+reading the base table is how the count leaked before phase 6 fixed it.
 
-One shape, three episodes. Each is **derived from an episode's deadline**, which
-follows `air_date` through `schema.sql`'s trigger — so there is no second date
-to keep in step and nothing a GM has to remember to press.
+There is a **fourth** copy of the rule that is not a view:
+`api/gm.js`'s `picksPublic` and `buildGuesses`'s `visible`. The GM is a player,
+so the panel is held to the same clock as everybody else (RULES §8). Those two
+lines must move whenever the views do — miss them and the one person entering
+results gets a private two-hour look at everyone's card.
 
-That last part is not decorative. `v_series_guesses_public` first gated on
-episode 1's **`live_at`**, which reads like the more precise answer to "has
-episode 1 aired?" and was not — because `live_at` was then stamped by a **Go
+**THE GATE IS THE REVEAL, NOT THE LOCK, AND THOSE ARE NOW DIFFERENT MOMENTS.**
+18:00 closes the picks and prices lateness at −2; 20:00 airs the episode, locks
+the panel and publishes everything. They were one instant until the −2 landed,
+and splitting them is what makes the penalty safe: if picks went public at the
+deadline, a LATE entry would be written with the whole league's card on screen,
+which is worth far more than 2 points is a deterrent. Now **however late you
+are, you are guessing blind** — structurally, not by warning. The only exception
+is VERY LATE, which arrives after the reveal by definition, and which only the
+GM can allow.
+
+The lock still lives on `deadline_at`, in `api/player.js`. **Do not let the two
+drift back together**: `buildGuesses` in `api/gm.js` deliberately reads
+`live_at` for `visible` and `deadline_at` for `locksAt`, and the smoke test
+toggles them separately for the same reason.
+
+Each moment is **derived from `air_date`** through `schema.sql`'s trigger — so
+there is no second date to keep in step and nothing a GM has to remember.
+
+That last part is not decorative, and its history inverts, which is worth
+knowing before anybody "fixes" the gate back. `v_series_guesses_public` gated on
+`live_at` once before and it was wrong **then**: `live_at` was stamped by a **Go
 live** button and cleared by **Take it back**, and Take it back was the only
 route from `live` to `complete`. So every episode reached "over" with a null
 `live_at` and the guess board emptied exactly when the episode finished. **A
 gate hanging off a button somebody has to remember to press is not a gate.**
 
-That finding is what killed the button. `live_at` is now derived from the air
-date at 20:00 and the gate is a deadline, so neither depends on anyone
-remembering anything — see the Episodes tab notes below.
+That finding is what killed the button — and killing it is what made `live_at`
+safe to gate on. It is now derived at 20:00 exactly as the deadline is derived
+at 18:00, no button touches either, and the reveal has moved back onto it
+deliberately. The smoke test asserts the gate opens via an **air date** and the
+trigger, never by setting `live_at` by hand, so the property is pinned rather
+than assumed.
 
 **2. Rules live on the server, never in the UI.**
 `api/player.js` recomputes lateness and the lock from the server clock on every
@@ -399,8 +422,17 @@ are both right there. Don't: that is a second implementation of a scoring rule,
 free to drift from the one that pays out. Instead `v_penalties` carries a
 `category` saying which pick brought the penalty on, and `v_episode_scores`
 aggregates the reasons into a `penalties` jsonb array. The browser looks up the
-row and prints a sentence. If a third penalty is ever added, the panel needs one
-new string in `penaltyWording` and nothing else.
+row and prints a sentence.
+
+**This section used to end "if a third penalty is ever added, the panel needs one
+new string in `penaltyWording` and nothing else."** A third penalty was added —
+the deadline −2 of RULES §2.5 — and that turned out to be true only for a
+penalty that belongs to a *pick*. This one belongs to the **week**, so it carries
+a null `category`, no `Verdict` ever matches it, and it needed a home of its own:
+the sums block at the foot of the scorecard, which is now itemised per penalty
+rather than showing one total. The null is load-bearing in both directions — it
+is what keeps the −2 off an innocent pick cell, and what the sums block uses to
+label it.
 
 **Movement is the one real derivation.** `v_standings` knows only where you
 stand now, so last week's table is rebuilt from `v_episode_scores` — points from
@@ -560,9 +592,10 @@ wall cell is a name in a box with no room for a sentence, so the tint would be
 carrying the meaning alone. `src/components/Mark.jsx` is the shared mark and its
 header explains the split.
 
-**The wall is empty right now and that is the system working.** No episode has a
-deadline, and `v_public_predictions` fails closed on exactly that. The panel
-says which of the two reasons applies rather than showing a blank.
+**The wall is empty right now and that is the system working.** No episode has an
+air date, so none has a `live_at`, and `v_public_predictions` fails closed on
+exactly that. The panel says which of the two reasons applies rather than showing
+a blank.
 
 **A finished week keeps its wall for a few days** — `pickWall` in
 `src/lib/dashboard.js`, added after this phase. Marking an episode complete is
@@ -701,9 +734,10 @@ second.** So nothing stores that moment:
 - the **lock** is `lockState(episodeTwo, entryForEpisodeTwo, now)` in
   `api/player.js` — the same function the weekly picks use, called with a
   different episode;
-- the **reveal** is `v_top_picks_public`'s `where ep.deadline_at is not null and
-  ep.deadline_at <= now()` on episode 2 — the same fail-closed shape as
-  `v_public_predictions`.
+- the **reveal** is `v_top_picks_public`'s `where ep.live_at is not null and
+  ep.live_at <= now()` on episode 2 — the same fail-closed shape as
+  `v_public_predictions`. (It read `deadline_at` until phase 9 split the lock
+  from the reveal; the lock above still uses the deadline.)
 
 Both follow `air_date` through `schema.sql`'s trigger for free, and there is no
 way for the two ends to disagree about when the three lock.
@@ -996,11 +1030,13 @@ pick counts, at the same end of the wire. So **unify the wordings before you
 tick anything**, not because the list is private but because a tick is when the
 points start mattering.
 
-**RULES §6's late-guess warning now covers LATE, not just VERY LATE.** That
-follows from revealing at the deadline: anyone submitting after it can see what
-everybody took and pick something nobody has, guaranteeing +5. `is_disallowed`
-and the GM's judgement are the answer, exactly as before — it is just a wider
-door than the original design left open.
+**RULES §6's late-guess warning covered LATE as well as VERY LATE while the
+reveal sat on the deadline — phase 9 narrowed it back to VERY LATE.** With the
+list now public only once episode 1 airs, a LATE guesser is guessing blind like
+everybody else and the −2 is the whole of their penalty. Only a VERY LATE one
+arrives after the reveal and could pick something nobody has, guaranteeing +5.
+`is_disallowed` and the GM's judgement are the answer there, exactly as the
+original design intended.
 
 **Re-ticking a guess in a different episode moves it**, rather than erroring or
 paying twice. The `(season_id, guess_key)` unique constraint guarantees a guess
@@ -1026,6 +1062,184 @@ says madeleine came up in episode 3, so the recap can say who called it — but
 the actual challenge names ("Signature: 12 identical madeleines") are not
 captured. That is a separate wish for the recap, and nothing here is shaped so
 as to prevent adding it later.
+
+---
+
+## Phase 9: the deadline penalty, and splitting the two moments
+
+✅ **Applied to the live database**, smoke test passing. If you are setting this
+up again the order is `schema.sql` → `views.sql` → `rls.sql` → `smoke_test.sql`;
+all four are idempotent, and `schema.sql` goes first because this phase adds a
+column (`entries.first_submitted_at`). `rls.sql` needed no edit — `v_penalties`
+stays ungranted and the number travels out through `v_episode_scores`, exactly as
+the −1s do.
+
+Missing the deadline now costs **−2** (RULES §2.5). The change is smaller than it
+sounds in SQL and larger than it sounds in the rules.
+
+### It is one penalty, not three
+
+`v_penalties` grew two arms, and they are the **exact negation of each other**:
+
+```
+late / very_late   an entry, not disallowed, stamped after 18:00, WITH picks
+no_entry           everything else: no entry, an empty card, a disallowed one
+```
+
+So the fee is charged once per player per week and can never double. The floor
+for a week is **−4** (both pick penalties plus this), not −6. If those ever start
+summing to −4 on their own, that pairing has come apart.
+
+All three flavours cost the same 2 points on purpose. Equal magnitudes are what
+make a late card strictly better than no card: once 18:00 has gone the fee is
+owed, so there is nothing further to lose by playing. A ladder of escalating
+fines would quietly advise a latecomer not to bother, which is the opposite of
+what a league of friends wants.
+
+### Two things the browser must not get wrong
+
+**`category` is NULL on the deadline penalty**, and that is load-bearing in both
+directions. `Scorecard.jsx` and `PredictionWall.jsx` find a pick's penalty with
+`p.category === c.key`, so a null matches nothing and the −2 can never light up
+an innocent pick cell. And `Scorecard`'s sums block uses that same null to know
+it is a penalty about the *week*. The sums block is now **itemised per penalty**
+rather than showing one `penalty_points` total — a single "Penalties −4" line can
+be two unrelated pieces of news, and rolling them together left the reader to
+guess which.
+
+**A player with no entry now HAS a row in `v_episode_scores`.** That is the third
+arm of the spine, and it reverses a documented decision: a worthless bake guess
+still pulls in no row, because 0 for an absentee is noise, but −2 for an absentee
+is the news. Two consequences that bit in review:
+
+- `Scorecard`'s "you didn't enter this week" branch keyed off `week` being null
+  and now has to key off `picks_made`, or it greets a non-submitter with
+  "0 of 0 picks right".
+- The spine arm is written against `pens` rather than against `no_entry`
+  specifically, so any future penalty is guaranteed a row to be carried by.
+
+### The no_entry arm is the only thing not built on `entries`
+
+It cannot be — the player it charges has no entry row. So it is
+`players × episodes`, and `deadline_at is not null and <= now()` is doing heavy
+lifting: a season is seeded with ten numbered episodes and no dates, and without
+that gate every player would owe 20 points on day one for weeks that have not
+happened. It also means a mis-set date un-charges itself when corrected.
+
+**The penalty is computed at read time, so it is retroactive.** Pasting
+`views.sql` re-scores every past week whose deadline has passed. That was
+expected and accepted here: the test episodes 1 and 2 carry deadlines, so the
+dummy accounts that never voted went to −2 the moment it was applied. Setting
+the real schedule — a deadline in the future — clears them again, which is the
+same self-correcting behaviour a mis-typed date gets.
+
+### `first_submitted_at`
+
+`entries.submitted_at` is overwritten on every save. That was free while LATE was
+a label; with 2 points riding on it, the difference between "in at 17:42, edited
+at 18:06" and "in at 18:06" is a conversation with the GM. `api/player.js` sets
+the new column on insert only, by omitting it from the upsert payload on the edit
+path — PostgREST updates exactly the columns the payload names, and there is no
+way to say `coalesce(first_submitted_at, excluded...)` over the wire.
+
+It is also what RULES §7's fourth tiebreak should mean; `submitted_at` would
+reward never going back to look at your own card.
+
+### "Edit anyway", and why it is not a rule
+
+`api/player.js` re-stamps lateness on **every** save, so an on-time entry edited
+at 18:05 becomes a −2. That is correct — they have had longer to think than
+everybody else — but saving is deliberate and *changing a select is not*, so one
+stray tap used to cost 2 points.
+
+Elena's first instinct was to lock the panel for anyone who had already
+submitted, leaving it open for those who hadn't. That was rejected for three
+reasons worth recording, because it will come up again:
+
+1. **"Has submitted" has no clean definition.** Any entry row won't do (empty
+   rows are a real state). One pick locks someone out mid-card. `confirmed_at` is
+   the honest signal but most players never press it.
+2. **It breaks the one-ladder invariant.** `lockState` serves the weekly picks,
+   the top three and the guesses from one answer; "have they submitted" would
+   have to mean something different for each.
+3. **It gives `gm_unlocked_at` a second job**, and an 18:30 GM-opened edit is not
+   "very late" in any sense the stamp can express.
+
+So the guard lives in `/play` instead: after the deadline, an on-time entry
+renders with its selects **disabled** behind an *Edit anyway (−2)* button. Same
+protection against the accident, no new server rule, and the one case it does
+*not* prevent — deliberately buying a change for 2 points — is not a loophole now
+that picks stay hidden until the broadcast.
+
+The three states `/play` can be in after 18:00 are in `DeadlineNotice`:
+
+| | Situation | What it says |
+|---|---|---|
+| **A** | nothing in yet | you can still submit; it costs 2 points |
+| **B** | a card in, on time | editing costs 2 points |
+| **C** | already late | the 2 is spent; editing is free until it airs |
+
+C is worth saying out loud: the flat fee means there is nothing left to lose
+before the hard lock, and the panel should say so rather than leaving someone to
+assume otherwise.
+
+**One bug worth recording, because it will be tempting to re-introduce.** The
+first version reset `unlocked` inside the `state.picks` re-sync block. Every
+response carries a fresh `picks` object, so *any* round trip — Confirm,
+Un-confirm, or just the tab regaining focus — slammed the gate shut on somebody
+who had already pressed *Edit anyway*. Elena found it as "Confirm greys out my
+choices". Nothing resets it now: `guarded` stops applying the moment the entry is
+stamped late, and `frozen` still honours `!editable`, so 20:00 closes the form
+regardless.
+
+### Confirm became a real lock
+
+Chasing that bug turned up a better one. `confirmed_at` did **nothing** but set a
+flag for two pills — it was in no scoring path at all — while being labelled
+*Confirm*, which everybody reasonably read as "lock my card". Elena's assumption
+about what the button did was a better design than the button.
+
+So a confirmed entry now has its picks disabled, and Un-confirm is the way back.
+That is a **second guard, different in kind** from the deadline one: `guarded` is
+the clock's and protects against a −2; `confirmLocked` is the player's own and
+protects against a slip. Still no scoring consequence — `confirm` deliberately
+does not re-stamp lateness, so both directions stay free at any time, and only a
+save can cost anything.
+
+Two composition details that are easy to get wrong:
+
+- **Where both guards are on, *Edit anyway* clears both in one press** — it
+  un-confirms as well as opening the form. Making someone hunt for a second
+  button to undo a decision they have just made is how a panel gets sworn at.
+- **The plain Un-confirm button is hidden while `guarded`** (`showConfirmToggle`).
+  Otherwise it is a second door that un-confirms *without* opening the form,
+  which just looks broken. Confirming while guarded is still offered: it is free,
+  and "I'm done" is a reasonable thing to say about a card you are not editing.
+
+Note what this does **not** touch: the bake guess and the top three have their own
+windows and their own "locked in for the series" messaging, and confirming a
+week's card does not lock either. Worth revisiting if it ever reads oddly, but
+extending a weekly decision over a series-long one would be the more surprising
+behaviour.
+
+### What moved with the reveal
+
+See "The three things that matter most" above — the gate on all three public
+views moved from `deadline_at` to `live_at`, and `api/gm.js` moved with them.
+The smoke test's fixtures now set **both** moments on every episode; setting only
+one was harmless when they were the same instant and is a fixture bug now (a
+reveal test with a null `live_at` asserts nothing but "fails closed", and a
+penalty test with a null `deadline_at` charges nobody).
+
+Two existing assertions had to be rewritten rather than repaired, because they
+encoded the old design:
+
+- *"A disallowed entry must not appear in scoring at all, 0 rows"* — it now
+  appears, carrying exactly the −2.
+- *"The gate must NOT depend on the GM having pressed Go live"* — still true in
+  spirit, now asserted the other way round: the test gives episode 1 an **air
+  date** and lets the trigger derive `live_at`, proving the gate follows the
+  schedule rather than a button.
 
 ---
 
@@ -1163,7 +1377,7 @@ disable comment.
 
 - **No rate limiting on `/api/player`.** Public wordlists, ~1,200 combinations,
   so codes are enumerable; a failed login sleeps 400ms. Accepted for a league of
-  friends — codes are cheap to reissue and predictions go public at the deadline.
+  friends — codes are cheap to reissue and predictions go public when it airs.
   Fix if needed: a `login_attempts` table keyed by IP.
 - **The chart can show at most four colours at once.** Not a style choice — a
   fifth series measures ΔE 7.1 to ordinary vision against a floor of 15.

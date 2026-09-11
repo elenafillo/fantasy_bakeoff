@@ -929,6 +929,38 @@ textarea.input { resize: vertical; line-height: 1.4; }
 }
 .rules-table .pts.cost { color: var(--live); }
 
+/* The deadline, set as a headline rather than a heading. It is the one moment
+   in the game everybody has to hold in their head, and since RULES §2.5 put a
+   price on missing it, "18:00 Tuesday" is the single most consequential fact on
+   this page. Same weight and tracking as the scorecard's week total — the two
+   are the same kind of thing, a number that decides something. */
+.rules-when {
+  margin: .1rem 0 .6rem;
+  font-size: 2.4rem; font-weight: 1000; line-height: .95;
+  letter-spacing: -.035em;
+  font-variant-numeric: tabular-nums;
+}
+.rules-when-sub {
+  display: block;
+  margin-top: .25rem;
+  font-size: .72rem; font-weight: 800; line-height: 1.15;
+  letter-spacing: .07em; text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+/* A worked example, set apart from the sentence that introduces it. Italic and
+   indented behind a rule, so the eye can tell "here is the thing itself" from
+   "here is what the thing is" without either being shouted. Used for the bingo
+   prompt, which is a quotation of something a GM would actually write. */
+.rules-eg {
+  margin: .4rem 0 .8rem;
+  padding: .1rem 0 .1rem .7rem;
+  border-left: 3px solid var(--icing);
+  font-style: italic;
+  font-size: .85rem;
+  color: var(--ink-soft);
+}
+
 .rules-list { margin: .5rem 0; padding-left: 1.15rem; }
 .rules-list li { margin: .35rem 0; }
 

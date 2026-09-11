@@ -32,8 +32,8 @@ declare
   v_league2 uuid;
   baker_a uuid; baker_b uuid; baker_c uuid; baker_d uuid;
   ep1 uuid; ep2 uuid; ep3 uuid; ep4 uuid;
-  p1 uuid; p2 uuid; p3 uuid; p4 uuid;
-  e1 uuid; e2 uuid; e3 uuid;
+  p1 uuid; p2 uuid; p3 uuid; p4 uuid; p5 uuid; p6 uuid; p7 uuid;
+  e1 uuid; e2 uuid; e3 uuid; e5 uuid;
   got int;
   got_bool boolean;
   got_text text;
@@ -52,13 +52,24 @@ begin
   insert into bakers (season_id, name) values (v_season, 'Baker C') returning id into baker_c;
   insert into bakers (season_id, name) values (v_season, 'Baker D') returning id into baker_d;
 
-  -- Episode 1: aired and scored.
-  insert into episodes (season_id, number, deadline_at, status)
-    values (v_season, 1, now() - interval '1 day', 'complete') returning id into ep1;
-  -- Episode 2: deadline still in the future — picks must stay private.
-  insert into episodes (season_id, number, deadline_at, status)
-    values (v_season, 2, now() + interval '1 day', 'upcoming') returning id into ep2;
-  -- Episode 3: no deadline at all (schedule unannounced) — must FAIL CLOSED.
+  -- THE TWO MOMENTS ARE SET SEPARATELY THROUGHOUT THIS FILE, because they are
+  -- two moments now: picks close at the deadline, and everything goes public
+  -- two hours later when the episode airs. Setting only one of them was fine
+  -- while they were the same instant and is a fixture bug now — a reveal test
+  -- with a null live_at asserts nothing but "fails closed", and a penalty test
+  -- with a null deadline_at charges nobody.
+
+  -- Episode 1: closed, aired, scored.
+  insert into episodes (season_id, number, deadline_at, live_at, status)
+    values (v_season, 1, now() - interval '1 day', now() - interval '22 hours', 'complete')
+    returning id into ep1;
+  -- Episode 2: both moments still to come — picks must stay private, and nobody
+  -- may be charged for not having submitted yet.
+  insert into episodes (season_id, number, deadline_at, live_at, status)
+    values (v_season, 2, now() + interval '1 day', now() + interval '26 hours', 'upcoming')
+    returning id into ep2;
+  -- Episode 3: no dates at all (schedule unannounced) — must FAIL CLOSED on the
+  -- reveal, and must charge nobody for missing a deadline that does not exist.
   insert into episodes (season_id, number, status)
     values (v_season, 3, 'upcoming') returning id into ep3;
 
@@ -68,6 +79,15 @@ begin
     values (v_league, 'P Two',   'smoketesttwo',   '#eb6834') returning id into p2;
   insert into players (league_id, display_name, code_norm, colour_hex)
     values (v_league, 'P Three', 'smoketestthree', '#1baf7a') returning id into p3;
+  -- The three shapes of missing the deadline (RULES §2.5). Each one exists to
+  -- pin a different branch of v_penalties' two new arms, and between them they
+  -- are the whole of it: late-with-picks, an empty card, and never showing up.
+  insert into players (league_id, display_name, code_norm, colour_hex)
+    values (v_league, 'P Five',  'smoketestfive',  '#7a4fc4') returning id into p5;
+  insert into players (league_id, display_name, code_norm, colour_hex)
+    values (v_league, 'P Six',   'smoketestsix',   '#d64a8a') returning id into p6;
+  insert into players (league_id, display_name, code_norm, colour_hex)
+    values (v_league, 'P Seven', 'smoketestseven', '#c9a227') returning id into p7;
 
   -- ---- episode 1 results ----------------------------------------------
   -- Star Baker A · TWO bakers leave (B and C) · technical D
@@ -102,6 +122,20 @@ begin
   insert into predictions (entry_id, category, baker_id) values
     (e3, 'best', baker_a), (e3, 'bingo', baker_b);
 
+  -- P5: in after 18:00, with one correct pick. Late picks still SCORE — the
+  -- penalty is a flat fee for missing the deadline, not a forfeit.
+  insert into entries (player_id, episode_id, lateness)
+    values (p5, ep1, 'late') returning id into e5;
+  insert into predictions (entry_id, category, baker_id) values (e5, 'technical', baker_d);
+
+  -- P6: opened the panel, saved nothing. An entry row with no predictions is a
+  -- real state, not a fixture curiosity — the GM's Entries tab counts
+  -- `picks_made > 0` as "in" precisely because of it.
+  insert into entries (player_id, episode_id) values (p6, ep1);
+
+  -- P7: never showed up at all. No entry row anywhere, which is why the
+  -- no_entry arm of v_penalties cannot be built on `entries`.
+
   -- ---- scoring ---------------------------------------------------------
 
   select points into got from v_episode_scores where player_id = p1 and episode_id = ep1;
@@ -113,8 +147,24 @@ begin
   assert got = -2, format(
     'P2 should score -2 (Best Baker who left, plus Leaving Baker who took Star Baker), got %s.', got);
 
-  select count(*) into got from v_episode_scores where player_id = p3;
-  assert got = 0, format('A disallowed entry must not appear in scoring at all, got %s row(s).', got);
+  -- A disallowed entry pays NOTHING and costs 2 — it is not scored, and it is
+  -- not a submission either. RULES §2.5 says it counts "as if it were never
+  -- made", and the deadline penalty takes that literally.
+  --
+  -- THIS ASSERTION USED TO READ "must not appear in scoring at all, 0 rows".
+  -- That was right when nothing could reach a player who had not submitted;
+  -- now the no_entry arm can, so the row exists and carries exactly the −2. If
+  -- you are reading this because the count came back 0, the penalty is being
+  -- computed and then thrown away for want of a spine row in v_episode_scores.
+  select points into got from v_episode_scores where player_id = p3 and episode_id = ep1;
+  assert got = -2, format(
+    'P3''s entry is disallowed, so their picks pay nothing and the week costs them the '
+    'flat -2 for having nothing in. Got %s.', got);
+
+  select pick_points into got from v_episode_scores where player_id = p3 and episode_id = ep1;
+  assert got = 0, format(
+    'A disallowed entry''s picks must still score nothing — the -2 above must not be '
+    'hiding points that are also being counted. Got %s.', got);
 
   select count(*) into got from v_penalties where player_id = p1;
   assert got = 0, format('P1 earned no penalty, got %s.', got);
@@ -142,34 +192,153 @@ begin
     'P1 earned no penalty, so the itemised list is empty rather than null — the panel '
     'iterates it. Got %s.', got);
 
+  -- P2's count of 2 above is also the on-time check: they submitted before the
+  -- deadline, so the two -1s are ALL they may take. A third row there would mean
+  -- the deadline penalty is firing for somebody who was never late.
+
+  -- ---- THE DEADLINE PENALTY --------------------------------------------
+  -- RULES §2.5. Nothing live in by 18:00 costs 2 points, in three flavours, and
+  -- the flavours must never overlap: exactly one -2 per player per week.
+  --
+  -- The floor for a week is therefore -4 — both pick penalties plus this one —
+  -- and NOT -6. If these start summing to -4 on their own, the `exists` in the
+  -- late arm has stopped being the exact negation of the `not exists` in the
+  -- no_entry arm, and somebody is being charged twice for one act.
+
+  -- LATE, with picks. The picks still score: the penalty is a flat fee for
+  -- missing the deadline, not a forfeit. That is what keeps submitting late
+  -- strictly better than giving up, which is the whole point of the flat rate.
+  select pick_points into got from v_episode_scores where player_id = p5 and episode_id = ep1;
+  assert got = 2, format(
+    'P5 was late but named the technical winner, and a late pick still scores. Got %s.', got);
+
+  select penalty_points into got from v_episode_scores where player_id = p5 and episode_id = ep1;
+  assert got = -2, format('A late entry costs a flat -2, got %s.', got);
+
+  select points into got from v_episode_scores where player_id = p5 and episode_id = ep1;
+  assert got = 0, format('P5: 2 from the technical, less the -2 for being late, is 0. Got %s.', got);
+
+  select count(*) into got from v_penalties where player_id = p5 and episode_id = ep1;
+  assert got = 1, format(
+    'P5 must take the deadline penalty EXACTLY ONCE, got %s. If it is 2, the late and '
+    'no_entry arms are both matching the same entry.', got);
+
+  -- The reason travels with it, because the panel says which kind of late it
+  -- was in words. The category is NULL: this is about the week, not about any
+  -- one pick, and Scorecard.jsx finds a pick's penalty by matching the category
+  -- — so a null is what stops the -2 landing on an innocent pick cell.
+  select penalties into got_json from v_episode_scores where player_id = p5 and episode_id = ep1;
+  assert got_json @> '[{"category": null, "reason": "late", "points": -2}]'::jsonb,
+    format('The late penalty must itemise with a null category. Got %s.', got_json);
+
+  -- VERY LATE costs exactly the same. The GM only opens that door for a genuine
+  -- mishap, and the Disallow switch is what handles bad faith — so there is no
+  -- ladder here, just the one fee.
+  update entries set lateness = 'very_late' where id = e5;
+
+  select penalty_points into got from v_episode_scores where player_id = p5 and episode_id = ep1;
+  assert got = -2, format('A very late entry costs the same flat -2, got %s.', got);
+
+  select penalties into got_json from v_episode_scores where player_id = p5 and episode_id = ep1;
+  assert got_json @> '[{"category": null, "reason": "very_late", "points": -2}]'::jsonb,
+    format('Very late must reach the panel as its own reason, to be worded as its own '
+           'sentence. Got %s.', got_json);
+
+  update entries set lateness = 'late' where id = e5;
+
+  -- AN EMPTY CARD is not a submission. P6 saved an entry row with nothing in it.
+  select points into got from v_episode_scores where player_id = p6 and episode_id = ep1;
+  assert got = -2, format(
+    'P6 saved an empty card, which is not a submission, so it costs -2. Got %s. If it '
+    'is 0, the late arm is matching on the entry row rather than on its picks.', got);
+
+  select penalties into got_json from v_episode_scores where player_id = p6 and episode_id = ep1;
+  assert got_json @> '[{"category": null, "reason": "no_entry", "points": -2}]'::jsonb,
+    format('An empty card is charged as no_entry, not as late. Got %s.', got_json);
+
+  -- NEVER SHOWED UP. THE ONE THAT NEEDS THE SPINE: P7 has no entry and no guess,
+  -- so before v_episode_scores grew its third spine arm this penalty was
+  -- computed by v_penalties and then silently dropped by the join.
+  select count(*) into got from entries where player_id = p7;
+  assert got = 0, 'Fixture check: P7 is supposed to have no entry at all.';
+
+  select count(*) into got from v_episode_scores where player_id = p7 and episode_id = ep1;
+  assert got = 1, format(
+    'P7 never submitted, so v_episode_scores must still give them a row for the week to '
+    'carry the -2. Got %s row(s) — if 0, the spine has no arm for penalties and the '
+    'charge vanishes before it reaches the standings.', got);
+
+  select points into got from v_episode_scores where player_id = p7 and episode_id = ep1;
+  assert got = -2, format('Not submitting at all costs -2, got %s.', got);
+
+  select total_points into got from v_standings where player_id = p7;
+  assert got = -2, format(
+    'The -2 has to reach the league table, not just the week. Got %s.', got);
+
+  -- A DEADLINE THAT HAS NOT PASSED CHARGES NOBODY. Episode 2's is still to come
+  -- and episode 3 has none at all — the state every episode in the real database
+  -- is in until the schedule is announced. Without this gate a freshly seeded
+  -- season would hand every player -20 on day one, for weeks that have not
+  -- happened.
+  select count(*) into got from v_penalties where player_id = p7 and episode_id = ep2;
+  assert got = 0, format(
+    'Episode 2''s deadline has not passed, so nobody may be charged for it yet. Got %s.', got);
+
+  select count(*) into got from v_penalties where player_id = p7 and episode_id = ep3;
+  assert got = 0, format(
+    'Episode 3 has no deadline at all, so there is nothing to be late for. Got %s. '
+    'Check that the no_entry arm still tests `deadline_at is not null`.', got);
+
   -- A voided category pays nobody, and cannot trigger a penalty either.
   select count(*) into got from v_prediction_scores
     where episode_id = ep1 and category = 'handshake' and is_correct;
   assert got = 0, format('A voided category must score nothing, got %s correct.', got);
 
-  -- ---- THE DEADLINE GATE ----------------------------------------------
+  -- ---- THE REVEAL GATE -------------------------------------------------
   -- The single most important assertion in this file. If predictions leak
-  -- before their deadline, the game is over before it starts.
+  -- before the episode airs, the game is over before it starts.
+  --
+  -- IT IS THE REVEAL GATE AND NOT THE DEADLINE GATE ANY MORE. The two moments
+  -- came apart in RULES §2.5: 18:00 closes the picks and prices lateness, 20:00
+  -- airs the episode and publishes everyone's card. The window between them is
+  -- what this section now exists to protect — a latecomer submitting at 19:00
+  -- must be guessing blind, exactly like everybody who was on time.
 
-  -- 9 = P1's five, P2's two, P3's two. Disallowed entries ARE public (flagged),
-  -- so the prediction wall can show them struck through; they are excluded from
-  -- scoring, not from view.
+  -- 10 = P1's five, P2's two, P3's two and P5's one. Disallowed entries ARE
+  -- public (flagged), so the prediction wall can show them struck through; they
+  -- are excluded from scoring, not from view. P6 saved an empty card and P7
+  -- nothing at all, so neither has a prediction to publish.
   select count(*) into got from v_public_predictions where episode_id = ep1;
-  assert got = 9, format(
-    'Episode 1 is past its deadline, so all 9 predictions should be public, got %s.', got);
+  assert got = 10, format(
+    'Episode 1 has aired, so all 10 predictions should be public, got %s.', got);
+
+  -- THE NEW WINDOW, and the reason the change was worth making. Put episode 1
+  -- back to half past six — deadline gone, broadcast still to come — and every
+  -- card must be sealed. Before the split this was the two hours in which a late
+  -- entry could be written with the whole league's picks on screen.
+  update episodes set live_at = now() + interval '1 hour' where id = ep1;
+
+  select count(*) into got from v_public_predictions where episode_id = ep1;
+  assert got = 0, format(
+    'LEAK: episode 1 is past its DEADLINE but has not aired, so nothing may be public '
+    'yet — this is the window a late entry is submitted in. Got %s prediction(s). If '
+    'this fails, the gate is back on deadline_at, and being LATE means seeing '
+    'everyone else''s card before you write your own.', got);
+
+  update episodes set live_at = now() - interval '22 hours' where id = ep1;
 
   insert into entries (player_id, episode_id) values (p1, ep2) returning id into e1;
   insert into predictions (entry_id, category, baker_id) values (e1, 'best', baker_a);
   select count(*) into got from v_public_predictions where episode_id = ep2;
   assert got = 0, format(
-    'LEAK: episode 2''s deadline has not passed but %s prediction(s) are public.', got);
+    'LEAK: episode 2 has not aired but %s prediction(s) are public.', got);
 
   insert into entries (player_id, episode_id) values (p1, ep3) returning id into e1;
   insert into predictions (entry_id, category, baker_id) values (e1, 'best', baker_a);
   select count(*) into got from v_public_predictions where episode_id = ep3;
   assert got = 0, format(
-    'LEAK: episode 3 has no deadline set, so it must FAIL CLOSED, but %s prediction(s) are public. '
-    'Check that v_public_predictions still tests `deadline_at is not null`.', got);
+    'LEAK: episode 3 has no air time set, so it must FAIL CLOSED, but %s prediction(s) are public. '
+    'Check that v_public_predictions still tests `live_at is not null`.', got);
 
   -- ---- top three -------------------------------------------------------
 
@@ -188,15 +357,20 @@ begin
   assert got_bool, 'The winner is in P1''s top three, so has_winner should be true.';
 
   -- ---- THE TOP THREE GATE ----------------------------------------------
-  -- The deadline gate again, on the same clock. RULES §5 reveals everyone's
-  -- three at the start of episode 2 — which IS episode 2's deadline, and is why
-  -- v_top_picks_public derives the moment from the episode rather than storing
-  -- a second date. This is the assertion standing between a private pick and
-  -- the whole league reading it a week early.
+  -- The reveal gate again, on the same clock. RULES §5 reveals everyone's three
+  -- at the START of episode 2 — which is episode 2's air time, not its deadline,
+  -- and is why v_top_picks_public derives the moment from the episode rather
+  -- than storing a second date. This is the assertion standing between a private
+  -- pick and the whole league reading it a week early.
+  --
+  -- The LOCK is still 18:00 (api/player.js), and the two are toggled separately
+  -- below for that reason: moving the deadline here would charge every fixture
+  -- player the -2 for episode 2 and quietly rewrite the standings asserted
+  -- further down.
 
   select count(*) into got from v_top_picks_public where player_id = p1;
   assert got = 0, format(
-    'LEAK: episode 2''s deadline has not passed but %s top pick(s) are public.', got);
+    'LEAK: episode 2 has not aired but %s top pick(s) are public.', got);
 
   -- The aggregate route to the same secret, and the reason this gate is not
   -- just about the new view: v_baker_stats is granted, so an ungated count here
@@ -208,12 +382,11 @@ begin
 
   -- Now let the reveal happen and check that it actually does — a gate welded
   -- shut passes both assertions above for entirely the wrong reason.
-  update episodes set deadline_at = now() - interval '1 hour' where id = ep2;
+  update episodes set live_at = now() - interval '1 hour' where id = ep2;
 
   select count(*) into got from v_top_picks_public where player_id = p1;
   assert got = 3, format(
-    'Episode 2''s deadline has passed, so all 3 of P1''s top picks should be '
-    'public, got %s.', got);
+    'Episode 2 has aired, so all 3 of P1''s top picks should be public, got %s.', got);
 
   select baker_name into got_text from v_top_picks_public where player_id = p1 and rank = 1;
   assert got_text = 'Baker A', format(
@@ -233,7 +406,7 @@ begin
   -- Put it back. The picked_best assertion below depends on episode 2's picks
   -- still being private, and would otherwise fail for a reason that has nothing
   -- to do with what it is testing.
-  update episodes set deadline_at = now() + interval '1 day' where id = ep2;
+  update episodes set live_at = now() + interval '26 hours' where id = ep2;
 
   -- ---- standings -------------------------------------------------------
 
@@ -241,12 +414,14 @@ begin
   assert got = 23, format('P1: 11 from episode 1 plus 12 in bonuses = 23, got %s.', got);
 
   select total_points into got from v_standings where player_id = p3;
-  assert got = 0, format('P3''s only entry was disallowed, so the total is 0, got %s.', got);
+  assert got = -2, format(
+    'P3''s only entry was disallowed, so it pays nothing AND counts as nothing having '
+    'been submitted: the total is -2, got %s.', got);
 
   -- Every player appears, including one who has never scored — the leaderboard
   -- would otherwise silently drop people.
   select count(*) into got from v_standings where league_id = v_league;
-  assert got = 3, format('All 3 players should stand in the league table, got %s.', got);
+  assert got = 6, format('All 6 players should stand in the league table, got %s.', got);
 
   -- ---- baker stats -----------------------------------------------------
 
@@ -431,57 +606,69 @@ begin
 
   -- ---- THE REVEAL GATE -------------------------------------------------
   -- The load-bearing filter a third time, on a third episode. The bake guesses
-  -- lock at EPISODE 1's deadline and are revealed at the same moment, exactly
-  -- as the top three lock and reveal at episode 2's. Without the gate people
+  -- LOCK at episode 1's deadline and are REVEALED when episode 1 airs, exactly
+  -- as the top three locks and reveals around episode 2. Without the gate people
   -- read each other's guesses while still deciding their own — and a guess is
   -- worth +5 precisely for being one that nobody else thought of.
   --
-  -- Episode 1's deadline has already passed in these fixtures, so take it away
-  -- to test the closed case, then put it back — the disallowed-guess assertion
+  -- Episode 1 has already aired in these fixtures, so take its air time away to
+  -- test the closed case, then put it back — the disallowed-guess assertion
   -- further down reads v_series_guesses_public and needs the gate open again.
   --
-  -- Setting deadline_at directly does not disturb schema.sql's trigger: that
-  -- only derives a deadline when the same write also changed air_date, and this
-  -- one leaves it alone.
+  -- ONLY live_at IS TOUCHED BELOW, AND THAT MATTERS TWICE OVER. It is the column
+  -- the gate now reads; and moving episode 1's DEADLINE instead would re-price
+  -- everybody's lateness mid-test, changing the standings this file has already
+  -- asserted. Setting either directly leaves schema.sql's trigger alone, which
+  -- only derives when the same write also changed air_date.
+  --
   -- EVERY QUERY BELOW IS SCOPED TO THE FIXTURE PLAYERS. v_series_guesses_public
   -- carries no season_id or league_id — like v_top_picks_public, its callers
   -- filter by the player ids from v_standings — so an unscoped count here reads
   -- the REAL league's guesses too and fails for reasons that have nothing to do
   -- with this test. It did exactly that on the first run.
-  update episodes set deadline_at = null where id = ep1;
+  update episodes set live_at = null where id = ep1;
 
   select count(*) into got from v_series_guesses_public where player_id in (p1, p2, p3);
   assert got = 0, format(
-    'LEAK: episode 1 has no deadline, so it must FAIL CLOSED, but %s guess(es) are '
-    'public. Check that v_series_guesses_public still tests `deadline_at is not null`.',
+    'LEAK: episode 1 has no air time, so it must FAIL CLOSED, but %s guess(es) are '
+    'public. Check that v_series_guesses_public still tests `live_at is not null`.',
     got);
 
-  -- A deadline still to come is the other closed case, and the one that is true
+  -- A broadcast still to come is the other closed case, and the one that is true
   -- for every episode in the real database today.
-  update episodes set deadline_at = now() + interval '1 day' where id = ep1;
+  update episodes set live_at = now() + interval '1 day' where id = ep1;
 
   select count(*) into got from v_series_guesses_public where player_id in (p1, p2, p3);
   assert got = 0, format(
-    'LEAK: episode 1''s deadline has not passed but %s guess(es) are public.', got);
+    'LEAK: episode 1 has not aired but %s guess(es) are public.', got);
 
-  -- Now let the reveal happen, and check that it genuinely does — a gate welded
-  -- shut would pass both assertions above for entirely the wrong reason.
-  update episodes set deadline_at = now() - interval '1 day' where id = ep1;
+  -- THE GATE MUST FOLLOW THE SCHEDULE AND NOT A BUTTON, which is the whole
+  -- history of this line and the reason it is asserted rather than assumed.
+  --
+  -- It read live_at once before and that WAS a bug: live_at was stamped by the
+  -- GM pressing "Go live" and cleared by "Take it back", and Take it back was
+  -- for a while the only route from live to complete — so every episode reached
+  -- "over" with a null live_at and this board emptied the moment the episode
+  -- finished. The gate was moved to deadline_at to escape that, and has now
+  -- moved back, because live_at is DERIVED from air_date by schema.sql's trigger
+  -- and no button touches it any more.
+  --
+  -- So the reveal is opened here the way the real thing opens it: by giving the
+  -- episode an air date and letting the trigger do the rest. A yesterday's date
+  -- puts both derived moments in the past, which leaves episode 1's deadline
+  -- where the fixtures had it and the lateness penalties undisturbed.
+  update episodes set air_date = current_date - 1 where id = ep1;
+
+  select (live_at is not null) into got_bool from episodes where id = ep1;
+  assert got_bool,
+    'An air date must derive a live_at through the trigger. If this fails the trigger '
+    'is gone, and every reveal gate in views.sql now depends on a column nothing sets.';
 
   select count(*) into got from v_series_guesses_public where player_id in (p1, p2, p3);
   assert got = 6, format(
-    'Episode 1''s deadline has passed, so all 6 guesses should be public, got %s.', got);
-
-  -- The gate must NOT depend on the GM having pressed Go live. It did once, and
-  -- the bug that followed was invisible until an episode finished: Take it back
-  -- was the only route from live to complete, and it clears live_at, so every
-  -- episode reached "over" with the board empty. Episode 1 has no live_at here
-  -- and the guesses must be public regardless.
-  select (live_at is null) into got_bool from episodes where id = ep1;
-  assert got_bool,
-    'Episode 1 has no live_at and its guesses must be public anyway. If this fails, '
-    'the fixture changed; if the count above fails while this passes, the gate has '
-    'been put back on live_at.';
+    'Episode 1 aired yesterday, so all 6 guesses should be public, got %s. The date was '
+    'set and the trigger derived the rest — no button was pressed, which is exactly the '
+    'property this gate lost once before.', got);
 
   select guess_text into got_text from v_series_guesses_public where player_id = p1 and slot = 1;
   assert got_text = 'Madeleine', format(
@@ -560,12 +747,25 @@ begin
 
   -- A guess that came up but paid nothing brings nobody in. Cake hit in episode
   -- 1 and was worth 0, and P3 holds cake but has no live entry that week — their
-  -- episode-1 entry is disallowed. So episode 1 must still have no row for them:
-  -- an 0-point row would draw them on the chart for a week they were never in,
-  -- and would quietly undo "a disallowed entry does not appear in scoring".
+  -- episode-1 entry is disallowed.
+  --
+  -- THE SPINE ARMS PULL IN OPPOSITE DIRECTIONS HERE, which is the point of
+  -- asserting it. P3 does have a row for episode 1, but the worthless guess is
+  -- not what put it there — the -2 for having nothing in is. A 0 for somebody
+  -- who sat the week out is noise and stays out; a -2 for somebody who missed it
+  -- is the news and comes in. So the row exists and carries exactly the penalty,
+  -- with nothing from the guess in it.
   select count(*) into got from v_episode_scores where player_id = p3 and episode_id = ep1;
+  assert got = 1, format('P3 owes -2 for episode 1, so they have exactly one row for it, got %s.', got);
+
+  select guess_points into got from v_episode_scores where player_id = p3 and episode_id = ep1;
   assert got = 0, format(
-    'A guess worth nothing must not create a scoring row, got %s.', got);
+    'A guess worth nothing must contribute nothing, got %s.', got);
+
+  select points into got from v_episode_scores where player_id = p3 and episode_id = ep1;
+  assert got = -2, format(
+    'P3''s episode 1 is the -2 and nothing else — no picks (disallowed) and no guess '
+    '(too popular). Got %s.', got);
 
   -- ---- DISALLOWING ONE GUESS -------------------------------------------
   -- The GM's switch, and the only way a guess leaves scoring — RULES §6 leaves
@@ -602,9 +802,9 @@ begin
     where player_id = p3 and guess_key = 'croquembouche';
 
   select total_points into got from v_standings where player_id = p3;
-  assert got = 2, format(
-    'P3''s episode-1 entry is disallowed and pays 0, but their croquembouche is a '
-    'separate commitment and still pays 2, got %s.', got);
+  assert got = 0, format(
+    'P3''s episode-1 entry is disallowed, so it pays 0 and costs 2; their croquembouche '
+    'is a separate commitment and still pays 2. The two cancel to 0, got %s.', got);
 
   -- ---- HOLDERS ARE COUNTED PER LEAGUE ----------------------------------
   -- Seasons are shared by every league playing them (TECH_PLAN §2), so a

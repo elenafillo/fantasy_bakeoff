@@ -34,11 +34,11 @@ export function GuessBoard({ guesses, standings, episodeOne }) {
         <p className="muted">
           {!episodeOne
             ? 'There is no episode 1 yet, so nobody has guessed.'
-            : !episodeOne.deadline_at
-              ? 'Episode 1 has no deadline yet, so nobody can be late for it and nobody’s guesses are public. They appear here as soon as the schedule is set.'
+            : !episodeOne.air_date
+              ? 'Episode 1 has no date yet, so nobody can be late for it and nobody’s guesses are public. They appear here as soon as the schedule is set.'
               : episodeOne.predictions_public
                 ? 'Nobody named a bake before episode 1, so there is nothing riding on this.'
-                : 'Two bakes each, named before episode 1. They all appear here the moment its deadline passes.'}
+                : 'Two bakes each, named before episode 1. They all appear here the moment it starts airing.'}
         </p>
       </Panel>
     )

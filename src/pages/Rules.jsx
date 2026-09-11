@@ -27,19 +27,25 @@ export default function Rules() {
           Before each episode, you name a baker in five categories, and win points once the episode airs:
         </p>
 
-        <h2 className="rules-h">Every week</h2>
+        <h2 className="rules-h">Categories</h2>
         <table className="rules-table">
           <tbody>
             <tr><th>Best Baker</th><td className="pts">+4</td><td>Who gets Star Baker</td></tr>
             <tr><th>Leaving Baker</th><td className="pts">+3</td><td>Who goes home</td></tr>
             <tr><th>Technical Winner</th><td className="pts">+2</td><td>First in the technical</td></tr>
-            <tr><th>Bingo Bonus</th><td className="pts">+2</td><td>Who the weekly's bingo event happens to</td></tr>
+            <tr><th>Bingo Bonus</th><td className="pts">+2</td><td>Who the week's bingo event happens to</td></tr>
             <tr><th>Handshake</th><td className="pts">+2</td><td>Who gets a Hollywood handshake</td></tr>
           </tbody>
         </table>
         <p className="small muted">Thirteen points is a perfect week.</p>
+        <p className="small muted">
+          The Bingo Bonus changes every week and is usually tied to that
+          week&rsquo;s theme. You predict <strong>which baker it happens to</strong>:
+        </p>
+        <p className="rules-eg">A judge says the word &ldquo;stodgy&rdquo; while judging a bake</p>
 
-        <h2 className="rules-h">The penalty</h2>
+
+        <h2 className="rules-h">Penalties</h2>
         <p className="muted">
           Getting it very wrong will cost you points:
         </p>
@@ -49,29 +55,78 @@ export default function Rules() {
             <tr><th>You said they&rsquo;d go home, they got Star Baker</th><td className="pts cost">&minus;1</td></tr>
           </tbody>
         </table>
+        <p className="small muted">
+          Both can apply in the same week &mdash; and so can the lateness penalty
+          below, so the worst a week can go is &minus;4.
+        </p>
+        <h2 className="rules-h">Weeks that don’t behave</h2>
+        <ul className="rules-list">
+          <li><strong>Two bakers go home?</strong> Naming either scores the full +3. </li>
+          <li><strong>Leaving bakers only score when eliminated.</strong> Not when they leave in special circumstances. </li>
+          <li><strong>Several handshakes, or the bingo hits several bakers?</strong> Same again: naming any of them scores once.</li>
+          <li><strong>No Star Baker, no handshake, nobody leaves?</strong> That category goes to Nobody.</li>
+        </ul>
       </Panel>
 
-      <Panel head="The deadline">
-        <h2 className="rules-h">18:00 Tuesday</h2>
+      <Panel head="Submitting, and the deadline">
         <p>
-          UK time, the day of the episode. Press the <strong>Confirm</strong> button to mark your choices as final (you can un-confirm up to the deadline). An incomplete entry still scores for
-          whatever you did fill in.
+          Submit your picks via the Play tab, using the two-word code provided to you. It is your login, so do not share it!
         </p>
         <p>
-          Submissions after 18:00 but before the episode begins will be marked as <span className="flag">LATE</span>. 
+        You can input and change your picks any time up to the deadline. <strong>Save picks</strong> stores them (do not forget to click it!), and <strong>Confirm</strong> locks your choices, indicating you are done. You can still <strong>Un-confirm</strong> and change them.
+        </p>
+        <h2 className="rules-h">Deadline</h2>
+        {/* Set as a headline rather than a heading. It is the one time in the
+            whole game everybody has to remember, and it now has a price
+            attached — so it gets the weight the scorecard gives a week's
+            points. */}
+        <p className="rules-when">
+          18:00 Tuesday
+          <span className="rules-when-sub">the day of the episode</span>
+        </p>
+        <p>
+          UK time. An incomplete entry still scores for whatever you did fill in.
         </p>
 
-        {/* <table className="rules-table">
+        <h2 className="rules-h">Lateness penalties</h2>
+        <p className="small muted">
+          <strong>Only one of these can apply per week</strong>, they do not stack. Not submitting carries the same penalty as submitting late, without the chance to win points.
+        </p>
+        <table className="rules-table">
           <tbody>
-            <tr><th>Before 18:00</th><td>Always fine</td></tr>
-            <tr><th>After the deadline, before it airs</th><td><span className="flag">LATE</span> — still allowed</td></tr>
-            <tr><th>Once the episode has started</th><td><span className="flag">VERY LATE</span> — only if the GM opens the door</td></tr>
+            <tr>
+              <th>
+                Submissions after 18:00 but before the episode begins (marked{' '}
+                <span className="flag">LATE</span>)
+              </th>
+              <td className="pts cost">&minus;2</td>
+            </tr>
+            <tr>
+              <th>
+                Editing after 18:00 but before the episode begins (marked{' '}
+                <span className="flag">LATE</span>)
+              </th>
+              <td className="pts cost">&minus;2</td>
+            </tr>
+            <tr>
+              <th>
+                Submissions after the start of the episode (marked{' '}
+                <span className="flag">VERY LATE</span>)
+              </th>
+              <td className="pts cost">&minus;2</td>
+            </tr>
+            <tr>
+              <th>Not submitting at all &mdash; an empty card counts as none</th>
+              <td className="pts cost">&minus;2</td>
+            </tr>
           </tbody>
-        </table> */}
+        </table>
+
 
         <p className="notice">
-          <strong>Everyone&rsquo;s picks go public the moment the deadline passes.</strong>{' '}
-          Submissions after the episode begins will only be allowed on very special circumstances and marked as <span className="flag">VERY LATE</span>
+          <strong>Everyone&rsquo;s picks go public when the episode starts airing.</strong>{' '}
+          Submissions after the episode begins will only be allowed manually by the GM in very special
+          circumstances, and are marked <span className="flag">VERY LATE</span>.
         </p>
       </Panel>
 
@@ -90,7 +145,8 @@ export default function Rules() {
         <p className="small muted">
           A perfect set is 15. The +3s land when the semi-final ends and the
           finalists are known; the +6 at the final. Picks lock with episode
-          2&rsquo;s deadline, and everyone&rsquo;s three go public at the same moment.
+          2&rsquo;s deadline, and everyone&rsquo;s three go public when episode 2
+          starts airing.
         </p>
       </Panel>
 
@@ -102,10 +158,7 @@ export default function Rules() {
         <h2 className="rules-h">Two bakes, before episode 1</h2>
         <p>
           Together with your episode 1 picks, choose two bakes you think will come up during the series. There are no changes
-          after that. 
-        </p>
-        <p>
-
+          after that.
         </p>
         <table className="rules-table">
           <tbody>
@@ -116,25 +169,11 @@ export default function Rules() {
           </tbody>
         </table>
 
-        <h2 className="rules-h">What counts as it coming up</h2>
+        <h2 className="rules-h">What counts</h2>
         <ul className="rules-list">
-          <li> To count as valid, the guess needs to be explicitly named in the task. For example, you guess <em>trifle</em>, and the Showstopper task is <em>Celebratory Free-Standing Trifle</em>. </li>
-          <li><strong>All three challenges count</strong>, the showstopper included — but by the name it&rsquo;s given, not by other components inside of it.</li>
+          <li> To count as valid, the guess needs to be <strong>explicitly named in the task</strong>. For example, you guess <em>trifle</em>, and the Showstopper task is <em>Celebratory Free-Standing Trifle</em>. </li>
+          <li>All three challenges count</li>
           <li>The GM&rsquo;s ruling is final, same as the bingo.</li>
-        </ul>
-      </Panel>
-
-      <Panel head="Weeks that don’t behave">
-        <h2 className="rules-h">Nobody, and two of everything</h2>
-        <p>
-          Real episodes break the neat five-category shape. When a category
-          didn&rsquo;t happen, the GM records it as <strong>Nobody</strong> — it
-          pays no one, and no penalty can fire from it.
-        </p>
-        <ul className="rules-list">
-          <li><strong>Two bakers go home?</strong> Naming either scores the full +3. </li>
-          <li><strong>Several handshakes, or the bingo hits several bakers?</strong> Same again: naming any of them scores once.</li>
-          <li><strong>No Star Baker, no handshake, nobody leaves?</strong> That category goes to Nobody.</li>
         </ul>
       </Panel>
 

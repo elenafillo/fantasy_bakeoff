@@ -42,7 +42,10 @@ import { useCountdown } from '../lib/useCountdown.js'
 export function PredictionWall({
   categories, predictions, standings, bakerNames, results, scores, episode, nextEpisode, meId,
 }) {
-  const countdown = useCountdown(episode?.deadline_at)
+  // Counts to the REVEAL, not to the deadline — this panel's only job while the
+  // picks are sealed is to say when they stop being sealed, and since RULES §2.5
+  // split the two moments that is 20:00 and not 18:00.
+  const countdown = useCountdown(episode?.live_at)
 
   if (!episode) return null
 
@@ -55,9 +58,9 @@ export function PredictionWall({
       <Panel head={head}>
         <h2>Everyone’s picks are hidden</h2>
         <p className="muted">
-          {episode.deadline_at
-            ? `They all appear here the moment the deadline passes — ${countdown.label.toLowerCase()}.`
-            : `Episode ${episode.number} has no deadline yet, so nobody can be late for it and nobody’s picks are public. They appear here as soon as the schedule is set.`}
+          {episode.live_at
+            ? `They all appear here the moment episode ${episode.number} starts airing — ${countdown.label.toLowerCase()}.`
+            : `Episode ${episode.number} has no date yet, so nobody can be late for it and nobody’s picks are public. They appear here as soon as the schedule is set.`}
         </p>
       </Panel>
     )
@@ -140,8 +143,11 @@ function Row({ player, categories, picks, bakerNames, results, week, isMe }) {
             that alone. */}
         <span className="wall-flags">
           {isMe && <span className="flag you">You</span>}
-          {entry?.lateness === 'late' && <span className="flag">Late</span>}
-          {entry?.lateness === 'very_late' && <span className="flag">Very late</span>}
+          {/* The cost rides with the flag. LATE was a label until RULES §2.5
+              put a price on it, and a wall that still showed the bare word made
+              the −2 in the score column look unexplained. */}
+          {entry?.lateness === 'late' && <span className="flag">Late &minus;2</span>}
+          {entry?.lateness === 'very_late' && <span className="flag">Very late &minus;2</span>}
           {entry?.is_disallowed && <span className="flag">Disallowed</span>}
         </span>
       </th>
