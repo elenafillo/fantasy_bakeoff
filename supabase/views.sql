@@ -486,6 +486,114 @@ where e1.live_at is not null
   and e1.live_at <= now();
 
 -- ------------------------------------------------------------
+-- End-of-series bonuses
+-- ------------------------------------------------------------
+-- +3 for each of your three who reaches the final, +6 if the winner is one of
+-- them. 'winner' counts as a finalist too, so a perfect set is 3+3+3+6 = 15.
+-- The +3s become visible as soon as bakers are marked 'finalist' (after the
+-- semi-final); the +6 when one is marked 'winner'. RULES §5.
+--
+-- THIS SITS ABOVE v_episode_scores because that view now reads the per-episode
+-- split below. It used to sit after it, back when the bonus reached the
+-- leaderboard through v_standings alone and never touched a week.
+
+create or replace view v_series_bonus as
+select
+  tp.player_id,
+  count(*) filter (where b.status in ('finalist','winner')) * 3
+    + case when count(*) filter (where b.status = 'winner') > 0 then 6 else 0 end
+    as points,
+  count(*) filter (where b.status in ('finalist','winner')) as finalists,
+  (count(*) filter (where b.status = 'winner') > 0)         as has_winner
+from top_picks tp
+join bakers b on b.id = tp.baker_id
+where tp.is_disallowed is false
+group by tp.player_id;
+
+-- ------------------------------------------------------------
+-- ...and which week each half of it lands in
+-- ------------------------------------------------------------
+-- RULES §5: "The +3s are awarded when the semi-final ends and the finalists are
+-- known; the +6 lands at the final." This view is that sentence, and until it
+-- existed the sentence was not implemented anywhere.
+--
+-- WHY IT HAD TO EXIST. The bonus carried no episode at all, so the chart lied:
+-- the lines summed episode points, v_standings added the bonus on top, and from
+-- the semi-final onwards the two disagreed by up to 15 points with nothing on
+-- the page able to explain it. Worse, the shake-up RULES §5 promises going into
+-- the last episode could not happen, because movement is computed by re-ranking
+-- episode points and the bonus was not in them.
+--
+-- THE TWO EPISODES ARE DERIVED, NEVER STORED, which is the same rule every
+-- other moment in this schema follows — the 18:00 deadline, the 20:00 reveal,
+-- the top-three lock. The final is the season's highest-numbered episode and the
+-- semi-final the one below it. Nothing needs setting, so nothing can drift and
+-- no GM has to remember anything.
+--
+-- The cost of deriving it: ADDING AN EPISODE TO A RUNNING SEASON MOVES BOTH.
+-- That is correct — a new last episode really is the new final — but it means
+-- the bonus can hop a week if the schedule changes late. All ten are seeded
+-- when the season is made, so it does not arise in practice.
+--
+-- IT SPLITS v_series_bonus RATHER THAN RECOUNTING FROM top_picks, so the two can
+-- never disagree about the total: `finalists` and `has_winner` are exactly the
+-- two halves of that view's `points`. One count, two places to put it.
+--
+-- A season with one episode has no semi-final, and the +3s fall back onto the
+-- final rather than vanishing — losing points is the one failure mode not worth
+-- having. v_episode_scores sums by (player, episode), so both halves landing on
+-- the same week is harmless.
+
+create or replace view v_series_bonus_scores as
+with seasons_running as (
+  select distinct season_id from episodes
+),
+marks as (
+  select
+    sr.season_id,
+    (select f.id from episodes f
+      where f.season_id = sr.season_id
+      order by f.number desc limit 1)            as final_episode_id,
+    -- Second-highest by number rather than `max - 1`: episode numbering is not
+    -- guaranteed contiguous, and a gap would otherwise silently drop the +3s.
+    (select se.id from episodes se
+      where se.season_id = sr.season_id
+      order by se.number desc limit 1 offset 1)  as semi_episode_id
+  from seasons_running sr
+),
+who as (
+  select sb.player_id, sb.finalists, sb.has_winner, l.season_id
+  from v_series_bonus sb
+  join players pl on pl.id = sb.player_id
+  join leagues l  on l.id = pl.league_id
+)
+select
+  w.player_id,
+  coalesce(m.semi_episode_id, m.final_episode_id) as episode_id,
+  -- ::int IS LOAD-BEARING, and leaving it off is a paste that fails. `finalists`
+  -- is a count(*), so it is bigint, and `bigint * 3` stays bigint — and
+  -- sum(bigint) in Postgres returns NUMERIC, not bigint. That would change
+  -- v_episode_scores.points from bigint to numeric, and CREATE OR REPLACE VIEW
+  -- cannot change a column's type: the paste is rejected outright with
+  -- "cannot change data type of view column". The other three arms of that view
+  -- all sum plain integers, which is why they come out bigint and this has to
+  -- match them.
+  (w.finalists * 3)::int                          as points
+from who w
+join marks m on m.season_id = w.season_id
+where w.finalists > 0
+  and coalesce(m.semi_episode_id, m.final_episode_id) is not null
+union all
+select
+  w.player_id,
+  m.final_episode_id,
+  6::int
+from who w
+join marks m on m.season_id = w.season_id
+where w.has_winner
+  and m.final_episode_id is not null;
+
+-- ------------------------------------------------------------
 -- Per-episode scores
 -- ------------------------------------------------------------
 -- THE SPINE IS THE GUEST LIST: a (player, episode) pair that is not on it has
@@ -502,6 +610,9 @@ where e1.live_at is not null
 --   penalties   a player charged for not submitting at all (RULES §2.5) has no
 --               entry and no guess, so this is the only thing that gives their
 --               −2 a week to land in
+--   bonuses     the top-three +3 and +6 land on the semi-final and the final
+--               (RULES §5), which may be weeks their owner made no picks in —
+--               the same hole the guess arm was opened for
 --
 -- The penalty arm is written against `pens` rather than against the no_entry
 -- reason specifically, which is the useful generalisation: ANY penalty is
@@ -515,10 +626,12 @@ where e1.live_at is not null
 -- an absentee is noise, and −2 for an absentee is the news. They did not sit
 -- the week out; they missed it, and it cost them.
 --
--- This is also why guess points get an episode at all, where the top-three
--- bonus cannot: v_series_bonus carries no episode, so it can never step the
--- chart or produce movement, but a guess hits in a specific week and does both,
--- on the night.
+-- EVERY POINT IN THE GAME NOW HAS A WEEK, and that is a property worth keeping.
+-- The top-three bonus was the last exception: it had no episode, so it could
+-- neither step the chart nor produce movement, and the leaderboard ran ahead of
+-- the lines from the semi-final on. v_series_bonus_scores above gives it the two
+-- weeks RULES §5 always said it had. If something new ever pays points, give it
+-- an episode here rather than a second arm on v_standings.
 
 create or replace view v_episode_scores as
 with picks as (
@@ -562,6 +675,17 @@ guesses as (
   where episode_id is not null
   group by player_id, episode_id
 ),
+bonuses as (
+  -- Summed, not taken row by row: on a one-episode season both halves of the
+  -- bonus land on the same week (v_series_bonus_scores).
+  select
+    player_id,
+    episode_id,
+    sum(points) as bonus_points
+  from v_series_bonus_scores
+  where episode_id is not null
+  group by player_id, episode_id
+),
 live_entries as (
   select * from entries where is_disallowed is false
 ),
@@ -571,6 +695,8 @@ spine as (
   select player_id, episode_id from guesses where guess_points <> 0
   union
   select player_id, episode_id from pens
+  union
+  select player_id, episode_id from bonuses where bonus_points <> 0
 )
 select
   sp.player_id,
@@ -578,7 +704,8 @@ select
   ep.number as episode_number,
   coalesce(pk.pick_points, 0)
     + coalesce(pn.penalty_points, 0)
-    + coalesce(gu.guess_points, 0) as points,
+    + coalesce(gu.guess_points, 0)
+    + coalesce(bo.bonus_points, 0) as points,
   coalesce(pk.pick_points, 0)    as pick_points,
   coalesce(pn.penalty_points, 0) as penalty_points,
   coalesce(pk.correct_count, 0)  as correct_count,
@@ -601,40 +728,39 @@ select
   -- guesses, on a different clock from v_series_guesses_public's. One secret,
   -- one gate. The words reach the dashboard through that view and reach a
   -- player's own panel through /api/player, which is authenticated.
-  coalesce(gu.guess_points, 0) as guess_points
+  coalesce(gu.guess_points, 0) as guess_points,
+  -- Appended for the same reason as the two above. It is what lets the scorecard
+  -- name the +3 or the +6 rather than leaving it inside `points` as an
+  -- unexplained jump in the one week the table reshuffles hardest.
+  coalesce(bo.bonus_points, 0) as bonus_points
 from spine sp
 join episodes ep on ep.id = sp.episode_id
 left join live_entries en on en.player_id = sp.player_id and en.episode_id = sp.episode_id
 left join picks   pk on pk.player_id = sp.player_id and pk.episode_id = sp.episode_id
 left join pens    pn on pn.player_id = sp.player_id and pn.episode_id = sp.episode_id
-left join guesses gu on gu.player_id = sp.player_id and gu.episode_id = sp.episode_id;
-
--- ------------------------------------------------------------
--- End-of-series bonuses
--- ------------------------------------------------------------
--- +3 for each of your three who reaches the final, +6 if the winner is one of
--- them. 'winner' counts as a finalist too, so a perfect set is 3+3+3+6 = 15.
--- The +3s become visible as soon as bakers are marked 'finalist' (after the
--- semi-final); the +6 when one is marked 'winner'. RULES §5.
-
-create or replace view v_series_bonus as
-select
-  tp.player_id,
-  count(*) filter (where b.status in ('finalist','winner')) * 3
-    + case when count(*) filter (where b.status = 'winner') > 0 then 6 else 0 end
-    as points,
-  count(*) filter (where b.status in ('finalist','winner')) as finalists,
-  (count(*) filter (where b.status = 'winner') > 0)         as has_winner
-from top_picks tp
-join bakers b on b.id = tp.baker_id
-where tp.is_disallowed is false
-group by tp.player_id;
+left join guesses gu on gu.player_id = sp.player_id and gu.episode_id = sp.episode_id
+left join bonuses bo on bo.player_id = sp.player_id and bo.episode_id = sp.episode_id;
 
 -- ------------------------------------------------------------
 -- Standings
 -- ------------------------------------------------------------
 -- The leaderboard. Ranked with rank(), so ties share a position — RULES §7's
 -- tiebreak is applied by a human at the end of the series, not here.
+--
+-- THE BONUS IS NO LONGER ADDED HERE, and that is the whole of the change that
+-- made the chart true. v_episode_scores now carries it, on the semi-final and
+-- the final (v_series_bonus_scores), so `episode_points` already includes it and
+-- adding `sb.points` on top would pay everybody their top three twice.
+--
+-- Two column names are now slightly wrong and cannot be fixed: `episode_points`
+-- includes the bonus, and `total_points` is therefore the same number. CREATE OR
+-- REPLACE VIEW cannot rename or re-order, and dropping this view cascades to
+-- every grant on it. Nothing in src/ or api/ reads `episode_points` — both are
+-- selected and neither is used — so the misnomer costs a comment and no more.
+--
+-- `bonus_points` stays, and is still the honest per-player total from
+-- v_series_bonus: it is how a reader says "how much of this came from the three"
+-- without re-deriving it. It is read by the dashboard and by /api/player.
 
 create or replace view v_standings as
 with ep as (
@@ -653,11 +779,11 @@ select
   p.avatar_config,
   coalesce(ep.episode_points, 0) as episode_points,
   coalesce(sb.points, 0)         as bonus_points,
-  coalesce(ep.episode_points, 0) + coalesce(sb.points, 0) as total_points,
+  coalesce(ep.episode_points, 0) as total_points,
   coalesce(ep.correct_total, 0)  as correct_total,
   rank() over (
     partition by p.league_id
-    order by coalesce(ep.episode_points, 0) + coalesce(sb.points, 0) desc
+    order by coalesce(ep.episode_points, 0) desc
   ) as position
 from players p
 join leagues l on l.id = p.league_id

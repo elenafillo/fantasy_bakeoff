@@ -1,5 +1,6 @@
 import { Panel } from './Panel.jsx'
 import { Avatar } from './Avatar.jsx'
+import { HowToRead, Note } from './HowToRead.jsx'
 
 /**
  * Everyone's two bakes — RULES §6.
@@ -72,6 +73,30 @@ export function GuessBoard({ guesses, standings, episodeOne }) {
           </li>
         ))}
       </ul>
+
+      <HowToRead>
+        <Note term={<span className="th-board-pick guess-chip waiting">madeleine</span>}>
+          Hasn&rsquo;t come up yet and it is still in play.
+        </Note>
+        <Note term={
+          <span className="th-board-pick guess-chip paid">
+            madeleine<span className="guess-chip-ep"> · Ep 3 · +5</span>
+          </span>
+        }>
+          It came up in episode 3, and points have been earned.
+        </Note>
+        <Note term={
+          <span className="th-board-pick guess-chip flat">
+            madeleine<span className="guess-chip-ep"> · Ep 3</span>
+          </span>
+        }>
+          It came up &mdash; but earned <strong>no points</strong>, because three or
+          more people named it.
+        </Note>
+        <Note term={<span className="th-board-pick guess-chip struck">madeleine</span>}>
+          The GM has set it aside and it scores nothing.
+        </Note>
+      </HowToRead>
     </Panel>
   )
 }

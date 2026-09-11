@@ -356,6 +356,43 @@ begin
   select has_winner into got_bool from v_series_bonus where player_id = p1;
   assert got_bool, 'The winner is in P1''s top three, so has_winner should be true.';
 
+  -- ---- WHICH WEEK THE BONUS LANDS IN -----------------------------------
+  -- RULES §5: "The +3s are awarded when the semi-final ends and the finalists
+  -- are known; the +6 lands at the final." The bonus carried no episode at all
+  -- until v_series_bonus_scores, which made the chart disagree with the
+  -- leaderboard by up to 15 points from the semi-final onwards, and made the
+  -- shake-up RULES §5 promises impossible — movement is a re-rank of episode
+  -- points, and the bonus was not in them.
+  --
+  -- The season holds episodes 1, 2 and 3 at this point, so the final is episode
+  -- 3 and the semi-final episode 2. Both are DERIVED from the numbering and
+  -- nothing stores them, which is why episode 7 arriving later in this file
+  -- moves them — asserted at the end.
+
+  select bonus_points into got from v_episode_scores
+   where player_id = p1 and episode_id = ep2;
+  assert got = 6, format(
+    'Two finalists at +3 each must land on the SEMI-FINAL, which is episode 2 at '
+    'this point. Got %s.', coalesce(got, 0));
+
+  select bonus_points into got from v_episode_scores
+   where player_id = p1 and episode_id = ep3;
+  assert got = 6, format(
+    'The +6 for having the winner must land on the FINAL, which is episode 3 at '
+    'this point. Got %s.', coalesce(got, 0));
+
+  select coalesce(bonus_points, 0) into got from v_episode_scores
+   where player_id = p1 and episode_id = ep1;
+  assert got = 0, format(
+    'Episode 1 is neither the final nor the semi-final, so no bonus may land '
+    'there. Got %s.', got);
+
+  -- The split must add up to the whole. If this fails while the two above pass,
+  -- one half of the bonus has been dropped rather than moved.
+  select coalesce(sum(bonus_points), 0) into got from v_episode_scores where player_id = p1;
+  assert got = 12, format(
+    'The per-episode split must sum to v_series_bonus.points, which is 12. Got %s.', got);
+
   -- ---- THE TOP THREE GATE ----------------------------------------------
   -- The reveal gate again, on the same clock. RULES §5 reveals everyone's three
   -- at the START of episode 2 — which is episode 2's air time, not its deadline,
@@ -411,7 +448,10 @@ begin
   -- ---- standings -------------------------------------------------------
 
   select total_points into got from v_standings where player_id = p1;
-  assert got = 23, format('P1: 11 from episode 1 plus 12 in bonuses = 23, got %s.', got);
+  assert got = 23, format(
+    'P1: 11 from episode 1 plus 12 in bonuses = 23, got %s. This number did not '
+    'change when the bonus was given the two weeks above — only where it lands '
+    'did. A total of 35 means it is being counted twice.', got);
 
   select total_points into got from v_standings where player_id = p3;
   assert got = -2, format(
@@ -828,10 +868,45 @@ begin
     'P4 is the sole holder in their own league, so the same guess pays them +5 too, '
     'got %s.', got);
 
+  -- ---- THE TWO WEEKS ARE DERIVED, NOT STORED ---------------------------
+  -- Episode 7 was added to this season further up, which makes IT the final and
+  -- episode 3 the semi-final. The bonus must have moved with them.
+  --
+  -- This is the cost of deriving the two moments rather than storing them, and
+  -- it is asserted rather than merely documented so that it stays a known
+  -- property: ADDING AN EPISODE TO A RUNNING SEASON MOVES THE BONUS. The real
+  -- season seeds all ten up front, so it does not arise there.
+
+  select bonus_points into got from v_episode_scores
+   where player_id = p1 and episode_id = ep4;
+  assert got = 6, format(
+    'Episode 7 is now the highest-numbered episode, so the +6 must have followed '
+    'it there. Got %s. If it is still on episode 3, the final is being stored '
+    'somewhere rather than derived from the numbering.', coalesce(got, 0));
+
+  select coalesce(sum(bonus_points), 0) into got from v_episode_scores
+   where player_id = p1 and episode_id = ep2;
+  assert got = 0, format(
+    'Episode 2 is no longer the semi-final, so no bonus may still be sitting '
+    'there. Got %s.', got);
+
+  -- THE SAFETY PROPERTY, and the one to read first if this section fails:
+  -- moving the bonus into the weeks must not change what anybody is ON. The
+  -- standings total must be exactly the sum of the episode rows and nothing
+  -- more — if v_standings is still adding v_series_bonus on top of episode
+  -- points that now include it, everyone with a top three is paid twice.
+  select (select coalesce(sum(points), 0) from v_episode_scores where player_id = p1)
+       - (select total_points from v_standings where player_id = p1)
+    into got;
+  assert got = 0, format(
+    'v_standings.total_points must equal the sum of that player''s v_episode_scores '
+    'rows. The difference is %s. A difference of +12 means the bonus is being '
+    'counted twice — once inside the episodes and again in v_standings.', got);
+
 end $$;
 
 rollback;
 
 -- Reached only if every assertion above held — a failure aborts the script
 -- before this line.
-select 'SMOKE TEST PASSED — scoring, all three reveal gates, the three result states and the bake guess tiers behave. Nothing was written.' as result;
+select 'SMOKE TEST PASSED — scoring, all three reveal gates, the three result states, the bake guess tiers and the two weeks the top-three bonus lands in all behave. Nothing was written.' as result;

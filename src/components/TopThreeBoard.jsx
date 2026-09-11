@@ -1,5 +1,6 @@
 import { Panel } from './Panel.jsx'
 import { Avatar } from './Avatar.jsx'
+import { HowToRead, Note } from './HowToRead.jsx'
 
 /**
  * Everyone's top three — the running story of the series (RULES §5).
@@ -76,6 +77,12 @@ export function TopThreeBoard({ topPicks, standings, episodeTwo }) {
           </li>
         ))}
       </ul>
+
+      <HowToRead>
+        <Note term={<span className="th-board-pick gone">Baker</span>}>
+          Struck through and greyed: that baker has left the tent. 
+        </Note>
+      </HowToRead>
     </Panel>
   )
 }

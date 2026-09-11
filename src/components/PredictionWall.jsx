@@ -4,6 +4,7 @@ import { Mark } from './Mark.jsx'
 import { signed, verdictFor } from '../lib/scores.js'
 import { usePopKey } from '../lib/usePopKey.js'
 import { useCountdown } from '../lib/useCountdown.js'
+import { HowToRead, Note } from './HowToRead.jsx'
 
 /**
  * Everyone's picks, ticking as the results land. The bit people shout at.
@@ -115,6 +116,40 @@ export function PredictionWall({
           </tbody>
         </table>
       </div>
+
+      <HowToRead>
+        <Note term="Baker names">
+          For each player, their guess in that category.
+        </Note>
+        <Note term="It scrolls sideways">
+          Seven columns will not fit a phone at a readable size.
+        </Note>
+        <Note term={<Mark glyph="✓" label="right" />}>
+          They named the baker who won it.
+        </Note>
+        <Note term={<Mark glyph="✗" label="wrong" />}>
+          They named someone else (no penalty).
+        </Note>
+        <Note term={<span className="howto-swatch penalised">&minus;1</span>}>
+          They earned a penalty by guessing star baker as leaving baker, or viceversa. 
+        </Note>
+        <Note term={<span className="howto-swatch hatched">&nbsp;</span>}>
+          No baker fullfilled the category, so nobody could get it right.
+        </Note>
+        <Note term={<span className="howto-swatch">&mdash;</span>}>
+          The player did not make a guess for this category.
+        </Note>
+        <Note term={<span className="howto-swatch pending">&nbsp;</span>}>
+          Still to come.
+        </Note>
+        <Note term="Late &minus;2">
+          Submitted after six o&rsquo;clock on the day, which costs two points.
+          Their picks still score as normal.
+        </Note>
+        <Note term="Disallowed">
+          The GM has manually disallowed this entry.
+        </Note>
+      </HowToRead>
     </Panel>
   )
 }

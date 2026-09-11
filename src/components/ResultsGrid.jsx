@@ -1,5 +1,6 @@
 import { Panel } from './Panel.jsx'
 import { nameList, verdictFor } from '../lib/scores.js'
+import { HowToRead, Note } from './HowToRead.jsx'
 
 /**
  * What happened this week, filling in category by category as the GM enters it.
@@ -66,6 +67,24 @@ export function ResultsGrid({ categories, results, episode }) {
           )
         })}
       </div>
+
+      <HowToRead>
+        <Note term="A name">
+          The baker that won the category. Two names means it was shared, and naming either one of them scores in full.
+        </Note>
+        <Note term={<span className="howto-swatch hatched"><s>Nobody</s></span>}>
+          No baker fullfilled this category (e.g. no handsake was given).
+        </Note>
+        <Note term={<span className="howto-swatch pending">Still to come</span>}>
+          Not decided yet, or not announced yet. 
+        </Note>
+        <Note term="+3 beside a category">
+          The points to be awarded from a correct guess in that category.
+        </Note>
+        <Note term="Live now">
+          The episode is on air, so this panel is refreshing every few seconds.
+        </Note>
+      </HowToRead>
     </Panel>
   )
 }

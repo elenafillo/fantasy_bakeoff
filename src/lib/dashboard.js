@@ -281,7 +281,8 @@ export async function fetchLive(league) {
     // shape, one episode earlier than the top three's
     // (v_series_guesses_public). It is in the poll rather than the once-only
     // fetch because a hit lands mid-episode, which is the whole appeal: these
-    // points have an honest week, unlike the series bonus.
+    // points have an honest week — as, since v_series_bonus_scores, does every
+    // other kind.
     //
     // Player filter load-bearing again: this view carries no league_id and
     // holds rows for every league in the season.
@@ -319,12 +320,13 @@ export async function fetchLive(league) {
  * across it rather than dropping to zero or leaving a gap — which is why
  * v_episode_scores is built on entries rather than on predictions.
  *
- * SERIES BONUSES ARE NOT ON THE LINE. v_series_bonus carries no episode, so
- * there is no honest week to attach +3s and +6s to — the same reason
- * movementFor carries them across rather than counting them as this week's
- * news. The leaderboard total includes them and the chart says so when they
- * are non-zero. Worth revisiting in phase 6, when top-three picks exist and
- * this stops being theoretical.
+ * SERIES BONUSES ARE ON THE LINES, and this note used to say the opposite. They
+ * had no episode, so the lines summed episode points while the leaderboard added
+ * the bonus on top, and from the semi-final the two disagreed by up to 15 points
+ * with nothing able to explain it. v_series_bonus_scores now lands the +3s on
+ * the semi-final and the +6 on the final (RULES §5), so they arrive in
+ * v_episode_scores.points like anything else and this function needs no special
+ * case. The chart and the table agree again, at every point in the series.
  */
 export function seriesFor({ standings, scores }) {
   const last = scores.reduce((max, s) => Math.max(max, s.episode_number), 0)

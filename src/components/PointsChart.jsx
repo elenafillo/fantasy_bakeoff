@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Panel } from './Panel.jsx'
+import { HowToRead, Note } from './HowToRead.jsx'
 
 /**
  * Cumulative points, one line per player.
@@ -244,6 +245,22 @@ export function PointsChart({ series, last, states, onCycle, hasBonus }) {
           {hasBonus && ' The last column includes series bonuses, which have no episode of their own.'}
         </p>
       </details>
+
+      <HowToRead>
+        <Note term="One line each">
+          A running total. Every line starts at zero before
+          episode 1.
+        </Note>
+        <Note term="Faded lines">
+          By default, the chart shows all player lines as muted, except the top three and you. Click on a name button to highlight, mute or hide.
+        </Note>
+        <Note term="Bake guesses">
+          On the lines, in the week the bake came up.
+        </Note>
+        <Note term="Show the numbers">
+          The same figures written out.
+        </Note>
+      </HowToRead>
     </Panel>
   )
 }

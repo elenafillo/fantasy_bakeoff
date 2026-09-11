@@ -859,6 +859,62 @@ textarea.input { resize: vertical; line-height: 1.4; }
 .wall-table tbody tr.disallowed .wall-nm { color: var(--ink-soft); text-decoration: line-through; }
 .wall-table tbody tr.disallowed .wall-pick { opacity: .55; }
 
+/* ---- "How to read this" ---- */
+
+/* An appendix, not content: a hairline above it and the same quiet summary the
+   recap and the chart's number table already use, so the third collapsed thing
+   on the page does not introduce a fourth style of collapsed thing.
+
+   Shut by default, so it costs one line of height on a phone. The panel above
+   has to read correctly without it (HowToRead.jsx). */
+.howto {
+  margin-top: .9rem;
+  border-top: 1px solid var(--line);
+}
+.howto > summary {
+  font-weight: 800; font-size: .85rem;
+  color: var(--btn);
+  cursor: pointer;
+  padding: .5rem 0 .2rem;
+}
+.howto-list {
+  margin: .2rem 0 .4rem;
+  display: grid;
+  gap: .5rem .8rem;
+  font-size: .82rem;
+}
+/* Stacked on a phone. A term and its sentence side by side needs a column wide
+   enough for "Ep 3, with no points after it", and taking that out of a 320px
+   screen leaves the sentence in a gutter. */
+.howto-term {
+  font-weight: 800;
+  color: var(--ink);
+  display: flex; align-items: center; gap: .35rem; flex-wrap: wrap;
+}
+.howto-what {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+/* The marks a key shows are the real ones, at the size they appear. The swatch
+   is the only thing drawn specially: a cell's worth of texture with no cell. */
+.howto-swatch {
+  display: inline-block;
+  min-width: 2.4rem; padding: .05rem .3rem;
+  border: 2px solid var(--line); border-radius: 6px;
+  font-size: .75rem; font-weight: 800; text-align: center;
+  color: var(--ink-soft);
+}
+.howto-swatch.pending { border-style: dashed; background: none; }
+.howto-swatch.penalised {
+  background-color: #fdeaee; border-color: #fdeaee; color: var(--live);
+  font-variant-numeric: tabular-nums;
+}
+.howto-dash {
+  display: inline-block; width: 1.1rem; height: 3px; border-radius: 2px;
+  background: var(--ink-soft);
+}
+
 /* ---- The recap ---- */
 
 .recap > summary {
@@ -1168,6 +1224,10 @@ textarea.input { resize: vertical; line-height: 1.4; }
 
   /* Name in its own column so the three chips line up down the board. */
   .th-board-row { grid-template-columns: 10rem 1fr; align-items: center; gap: .8rem; }
+
+  /* Room for the term beside its sentence, which is what makes it scan as a
+     key rather than as a list of short paragraphs. */
+  .howto-list { grid-template-columns: 11rem 1fr; align-items: baseline; }
 
   /* Two columns of cards, and the rule between them goes: a border down a grid
      of cards reads as a table it isn't. */

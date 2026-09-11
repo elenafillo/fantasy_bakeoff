@@ -65,7 +65,7 @@ export function Scorecard({ categories, picks, bakerNames, results, week, positi
           The guess itself is not named here: /play stops showing the guesses
           once episode 1 is behind you (api/player.js), and the dashboard board
           is where they live. This is the number, and where it came from. */}
-      {week && (week.penalty_points !== 0 || week.guess_points !== 0) && (
+      {week && (week.penalty_points !== 0 || week.guess_points !== 0 || week.bonus_points !== 0) && (
         <div className="score-sums">
           <div><span>Picks</span><span>{signed(week.pick_points)}</span></div>
 
@@ -84,6 +84,17 @@ export function Scorecard({ categories, picks, bakerNames, results, week, positi
 
           {week.guess_points !== 0 && (
             <div><span>Bake guess</span><span>{signed(week.guess_points)}</span></div>
+          )}
+
+          {/* The top three, paid in the two weeks RULES §5 gives it: +3 a
+              finalist when the semi-final ends, +6 at the final. It is the
+              largest single jump in the game — up to 15 — and it arrives in a
+              week whose picks may all have missed, so it needs naming here for
+              exactly the reason the bake guess above does. It is not itemised
+              into its two halves: they land in different weeks, so each row is
+              already only ever one of them. */}
+          {week.bonus_points !== 0 && (
+            <div><span>Your top three</span><span>{signed(week.bonus_points)}</span></div>
           )}
           <div className="total"><span>This week</span><span>{week.points}</span></div>
         </div>
@@ -116,17 +127,24 @@ function Big({ points }) {
   )
 }
 
-/** An arrow is never on its own — the words carry it (DESIGN §5). */
+/**
+ * An arrow is never on its own — the words carry it (DESIGN §5).
+ *
+ * Only a move is reported, as on the dashboard's leaderboard: standing still
+ * reads as the place on its own, the same as week one where there is no earlier
+ * table to compare against. "Holding 2nd" was the old wording and it sounded
+ * like a state being announced rather than the absence of a move — beside a
+ * points figure that may well have gone up, since this line is about position.
+ */
 function Movement({ movement, label }) {
   if (!label) return null
-  if (movement == null) return <>{sentenceCase(label)}</>
   if (movement > 0) {
     return <><span aria-hidden="true">▲ </span>Up {movement} to {label}</>
   }
   if (movement < 0) {
     return <><span aria-hidden="true">▼ </span>Down {-movement} to {label}</>
   }
-  return <>Holding {label}</>
+  return <>{sentenceCase(label)}</>
 }
 
 /**

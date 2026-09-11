@@ -111,3 +111,10 @@ grant select on v_episode_results_public to anon, authenticated;
 -- guess_key beside player_id, so granting it would publish everyone's guesses
 -- from the moment they were typed, which is exactly what the reveal exists to
 -- prevent. v_episode_scores takes a NUMBER from it and nothing else.
+--
+-- v_series_bonus_scores joins that list, and needs no grant of its own: it is
+-- v_series_bonus split across the semi-final and the final, and it reaches the
+-- browser through v_episode_scores, which is granted. Nothing is gained by
+-- exposing it — the per-player total is already public in v_series_bonus, and
+-- the split is public in v_episode_scores.bonus_points. Being security-definer
+-- like every view here, it is readable by the granted views regardless.

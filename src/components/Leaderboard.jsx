@@ -3,6 +3,7 @@ import { Panel } from './Panel.jsx'
 import { Avatar } from './Avatar.jsx'
 import { positionLabel, signed } from '../lib/scores.js'
 import { usePopKey } from '../lib/usePopKey.js'
+import { HowToRead, Note } from './HowToRead.jsx'
 
 /**
  * The league table. The thing people actually open this page for, so it sits at
@@ -54,6 +55,29 @@ export function Leaderboard({ standings, scores, episode, states, onCycle, movem
           />
         ))}
       </div>
+
+      <HowToRead>
+        <Note term={<><span className="up"><span aria-hidden="true">▲</span> up 2</span></>}>
+          Places gained or lost since last week. It follows your <em>position</em>,
+          not your points. No
+          arrow means you have not moved in the leaderboard.
+        </Note>
+        <Note term={<><span aria-hidden="true">=</span> 2nd</>}>
+          There is a tie on points, so both take the place and the next one skips: 1st,
+          =2nd, =2nd, 4th. A tie at the end of the series is settled by a person,
+          not by the table.
+        </Note>
+        <Note term={<span className="howto-dash" />}>
+          That player&rsquo;s colour, and the line on the chart below. 
+        </Note>
+        <Note term="+7 this week">
+          Points earned in this episode so far, penalties included.
+          <em> No entry</em> means they submitted nothing this week.
+        </Note>
+        <Note term="Tapping a row">
+          Highlight, mute or hide that player&rsquo;s chart line.
+        </Note>
+      </HowToRead>
     </Panel>
   )
 }
@@ -109,12 +133,23 @@ function Row({ row, joint, week, movement, state, onCycle, isMe }) {
   )
 }
 
-/** An arrow is never on its own — the word carries it (DESIGN §5). */
+/**
+ * An arrow is never on its own — the word carries it (DESIGN §5).
+ *
+ * Only a move is reported. Standing still used to say "holding", and the word
+ * read as a state of its own rather than as the absence of news — it invited
+ * "holding what?" from someone who had in fact just scored seven points, since
+ * this line is about POSITION and the one beside it is about points. Nothing is
+ * the honest rendering of nothing happening.
+ *
+ * So an unmoved row now looks exactly like week one, where movement is null
+ * because there is no earlier table to compare against (movementFor). That
+ * collapse is deliberate: both mean "no news about your place".
+ */
 function Movement({ movement }) {
-  if (movement == null) return null
+  if (!movement) return null
   if (movement > 0) return <> · <span className="up"><span aria-hidden="true">▲</span> up {movement}</span></>
-  if (movement < 0) return <> · <span className="down"><span aria-hidden="true">▼</span> down {-movement}</span></>
-  return <> · holding</>
+  return <> · <span className="down"><span aria-hidden="true">▼</span> down {-movement}</span></>
 }
 
 const WORD = { full: 'shown', muted: 'faded', hidden: 'hidden' }

@@ -52,7 +52,12 @@ export async function fetchScoreboard({ episodeId, episodeNumber, leagueId, play
           // missed but a bake guess came up. /play stops showing the guesses
           // themselves after episode 1, so this line is the only thing on that
           // page that accounts for the points.
-          'correct_count,picks_made,penalties,guess_points',
+          //
+          // bonus_points for the same reason, two weeks later: the top three
+          // pays +3 a finalist at the semi-final and +6 at the final, and
+          // without this the biggest jump of the series would arrive on the
+          // scorecard with nothing on the page naming it.
+          'correct_count,picks_made,penalties,guess_points,bonus_points',
         params: { player_id: `in.(${ids.join(',')})` },
       })
     : []
@@ -74,18 +79,21 @@ export async function fetchScoreboard({ episodeId, episodeNumber, leagueId, play
 }
 
 /**
- * How far you moved this week: positive is up the table, 0 is holding station,
- * null is "there is nothing to compare against yet".
+ * How far you moved this week: positive is up the table, negative is down,
+ * null is "there is nothing to compare against yet". Zero is reported as
+ * nothing at all — see Movement in Leaderboard.jsx.
  *
  * v_standings knows only where you stand now, so last week's table has to be
- * rebuilt: everyone's points from the episodes *before* this one, plus their
- * series bonus, re-ranked the same way SQL ranks.
+ * rebuilt: everyone's points from the episodes *before* this one, re-ranked the
+ * same way SQL ranks.
  *
- * The bonus is carried across rather than treated as this week's news, because
- * v_series_bonus has no episode attached — it is a fact about the series, and
- * there is no honest way to say which week it landed in. The consequence, worth
- * knowing before the final: the top-three bonuses appear in both tables, so
- * they produce no movement of their own.
+ * THE SERIES BONUS IS NOT ADDED SEPARATELY, and used to be. It had no episode,
+ * so it had to be carried across into both tables — which meant it could never
+ * produce movement of its own, and the shake-up RULES §5 promises going into the
+ * final could not happen. It now lands on the semi-final and the final
+ * (v_series_bonus_scores), so it arrives inside `perEpisode` like any other
+ * points and moves the table on the week it is won. Adding `bonus_points` here
+ * as well would count it twice and quietly cancel the movement out again.
  */
 export function movementFor({ table, perEpisode, playerId, episodeNumber }) {
   const earlier = perEpisode.filter((s) => s.episode_number < episodeNumber)
@@ -97,11 +105,9 @@ export function movementFor({ table, perEpisode, playerId, episodeNumber }) {
   const before = rankBy(
     table.map((row) => ({
       player_id: row.player_id,
-      total:
-        row.bonus_points +
-        earlier
-          .filter((s) => s.player_id === row.player_id)
-          .reduce((sum, s) => sum + s.points, 0),
+      total: earlier
+        .filter((s) => s.player_id === row.player_id)
+        .reduce((sum, s) => sum + s.points, 0),
     }))
   )
 
