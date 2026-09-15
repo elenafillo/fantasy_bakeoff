@@ -172,6 +172,25 @@ function PlayerRow({ player, colours, taken, busy, send }) {
         </div>
       ) : (
         <div className="roster-actions">
+          {/* A direct toggle, not a field in the edit form. "Who still owes me
+              a fiver" is a question you answer by running down the roster, and
+              Edit → tick → Save is three taps to change one boolean. Same
+              shape, and the same reasoning, as Disallow on the Entries tab.
+
+              It stays on this tab and this tab only: the column is absent from
+              v_players_public, so nothing on the dashboard can show it even by
+              accident. Owing money is not a thing to publish to the league. */}
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={Boolean(player.has_paid)}
+              disabled={busy}
+              onChange={(e) =>
+                send('upsertPlayer', { playerId: player.id, has_paid: e.target.checked })
+              }
+            />
+            Paid
+          </label>
           <button className="btn-mini" disabled={busy} onClick={open}>Edit</button>
           <Confirm
             className="btn-mini"

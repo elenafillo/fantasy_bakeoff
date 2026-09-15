@@ -88,6 +88,12 @@ create table if not exists players (
   colour_hex    text not null check (colour_hex ~* '^#[0-9a-f]{6}$'),
   avatar_config jsonb not null default '{}'::jsonb,
   is_gm         boolean not null default false,
+  -- Whether they have paid into the pot. A note to the GM and nothing else:
+  -- v_players_public omits it, so it never reaches the browser, and no view,
+  -- scoring rule or tiebreak reads it. Who has paid is between the GM and the
+  -- player, and it must not become a thing the league can see on the
+  -- leaderboard.
+  has_paid      boolean not null default false,
   created_at    timestamptz not null default now()
 );
 
@@ -96,6 +102,10 @@ create table if not exists players (
 -- together.
 create unique index if not exists players_colour_per_league
   on players (league_id, colour_hex);
+
+-- For a database created before has_paid existed. False is the honest starting
+-- state for everybody, so there is nothing to backfill.
+alter table players add column if not exists has_paid boolean not null default false;
 
 -- ------------------------------------------------------------
 -- Categories — scoring config, not code

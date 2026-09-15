@@ -127,7 +127,7 @@ async function buildState({ episodeId }) {
     rest('leagues', `select=*&season_id=eq.${season.id}&order=name.asc`),
     rest(
       'players',
-      `select=id,league_id,display_name,code_norm,colour_hex,is_gm,leagues!inner(season_id)` +
+      `select=id,league_id,display_name,code_norm,colour_hex,is_gm,has_paid,leagues!inner(season_id)` +
         `&leagues.season_id=eq.${season.id}&order=display_name.asc`
     ),
   ])
@@ -191,6 +191,10 @@ async function buildState({ episodeId }) {
       display_name: p.display_name,
       colour_hex: p.colour_hex,
       is_gm: p.is_gm,
+      // Whether they have paid into the pot. It goes no further than this
+      // password-gated endpoint — there is no granted view carrying it, so the
+      // league never sees who still owes.
+      has_paid: p.has_paid,
       // The stored form is one word; this is the readable one. Both log in, so
       // the panel can hand the GM the version that survives being read aloud —
       // and code_norm itself never leaves the server.
@@ -1039,6 +1043,10 @@ async function upsertPlayer(res, body) {
         patch.colour_hex = await freeColour(body.colour_hex, player.league_id, player.id)
       }
       if ('is_gm' in body) patch.is_gm = body.is_gm === true
+      // Sent on its own by the Paid checkbox, which is a direct toggle rather
+      // than a field in the edit form. Only the keys present are patched, so
+      // the two writes cannot overwrite each other.
+      if ('has_paid' in body) patch.has_paid = body.has_paid === true
 
       if (Object.keys(patch).length === 0) throw new HttpError(400, 'Nothing to change.')
       await restPatch('players', `id=eq.${player.id}`, patch)
