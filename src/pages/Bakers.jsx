@@ -97,11 +97,12 @@ export default function Bakers() {
         {inTent} still in
         {left > 0 && <> · {left} gone home</>}
       </p>
-      {/* The broadcaster's own cast page, which carries the full-length
-          profiles this page deliberately does not — a card here is a face, a
-          name and one line, and anyone who wants the rest should get it from
-          the source rather than from a paraphrase of it that would rot.
-          The year is hardcoded: `seasons.year` exists but is not on any
+      {/* Both cast write-ups this page deliberately does not carry — a card
+          here is a face, a name and one line, and anyone who wants the rest
+          should get it from the source rather than from a paraphrase of it
+          that would rot. The straight one from the broadcaster, the unkind
+          one from the Guardian.
+          Both are hardcoded to 2026: `seasons.year` exists but is not on any
           granted view, and widening one to carry a link is not worth a
           permission-boundary change (CLAUDE.md, invariant 1). */}
       <p className="small cast-link">
@@ -111,6 +112,14 @@ export default function Bakers() {
           rel="noreferrer noopener"
         >
           Click here to read the full descriptions
+        </a>
+        {', and '}
+        <a
+          href="https://www.theguardian.com/tv-and-radio/2026/sep/07/meet-the-stars-of-the-2026-great-british-bake-off"
+          target="_blank"
+          rel="noreferrer noopener"
+        >
+          click here for the more sarcastic Guardian ranking
         </a>
       </p>
       <ul className="cast">

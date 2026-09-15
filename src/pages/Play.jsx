@@ -565,10 +565,9 @@ function BakeGuess({ guesses, busy, onSave }) {
     <Panel head="The bake guess">
       <h2 className="th-head">Two bakes, for the whole series</h2>
       <p className="small muted">
-        Name two things you think will come up — a bake, an ingredient, a
-        technique. <strong>+5</strong> if you were the only one who said it,{' '}
-        <strong>+2</strong> if exactly two of you did, nothing if three or more
-        did. It pays the week it appears, once.
+        Name two bakes you think will come up, at any point in the season — they need to be named in the task title to count. You get <strong>+5</strong> if you were the only one who said it,{' '}
+        <strong>+2</strong> if two people did, nothing if three or more
+        people said it.
       </p>
 
       {!guesses.editable ? (
