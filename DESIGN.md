@@ -193,7 +193,14 @@ the same numbers is always reachable — the fallback for anyone the colours fai
   colour, including in print. A category the GM hasn't reached yet is left
   plainly blank instead — the two states must not look alike. (`.hatched`)
 - **Stitch borders** — a dashed hairline for provisional things: an unconfirmed
-  entry, a pending result.
+  entry, a pending result, a player who has nothing in yet.
+- **The sealed band** — a solid bar of `--icing` across a row of the prediction
+  wall before the episode airs: their picks are in, and hidden. A card
+  face-down. Deliberately *not* the grey of a wrong pick — that is the same tile
+  a week later meaning something else entirely, which is the sort of thing
+  nobody notices until the night it misleads them. What it sits beside is the
+  stitch border above, unchanged: same mark, same meaning as a result still to
+  come. (`.wall-seal`)
 
 No photographic textures, no gradients on data marks, no shadow deeper than the
 button's 3px edge.

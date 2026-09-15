@@ -252,7 +252,12 @@ export async function fetchLive(league) {
       ? supabase.query('v_episode_scores', {
           select:
             'player_id,episode_id,episode_number,points,pick_points,penalty_points,' +
-            'correct_count,picks_made,lateness,penalties',
+            // picks_made and confirmed are the sealed wall's whole data source
+            // (SealedWall in PredictionWall.jsx): how many categories somebody
+            // has filled in, and whether they have said they are done. Both are
+            // already in this view, which carries no gate — a COUNT is not a
+            // pick, and which categories they filled in is published nowhere.
+            'correct_count,picks_made,confirmed,lateness,penalties',
           params: { player_id: inLeague },
         })
       : [],

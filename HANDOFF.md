@@ -37,6 +37,7 @@ late September 2026), so nothing is time-pressured yet.
 | 8 — the bake guess | ✅ **Done.** Two bakes per player before episode 1, ticked weekly by the GM, scored 5/2/0 in SQL. **Two new tables**, so `schema.sql` is pasted first this time — see below and TECH_PLAN §14 |
 | 9 — the deadline penalty | ✅ **Done.** Missing the deadline costs −2 (RULES §2.5), and the reveal moved from the deadline to the broadcast so a latecomer still guesses blind. `schema.sql` → `views.sql` → `rls.sql` applied, smoke test passing. Confirm became a real lock on your own picks |
 | — multiple leagues, GM half | ✅ **Done**, outside the phase numbering. The Leagues tab, `upsertLeague`, and league scoping on Entries and Players. **No SQL, no new grant, nothing to paste.** The dashboard switcher is built too — a button per league at the foot of the page, scoped to the season so the demo leagues stay off it |
+| — the wall before the reveal | ✅ **Done**, outside the phase numbering. The sealed wall was a paragraph saying the picks were hidden; it is now the whole roster with the contents withheld — who is in, how far, who is late, who has confirmed — so it answers *who still hasn't done theirs?* **No SQL, no new grant, nothing to paste**: `picks_made` and `confirmed` were already on `v_episode_scores`, which is granted and ungated. A count is not a pick |
 | — the bonus gets a week, and the dashboard a key | ✅ **Done**, outside the phase numbering. The top-three bonus now lands on the semi-final (+3 each) and the final (+6), which is what RULES §5 always said and nothing implemented — so the chart and the leaderboard agree again, and the bonus moves the table on the night. `views.sql` → `rls.sql` applied, smoke test passing. **No new grant.** Plus a shut-by-default "How to read this" at the foot of six dashboard panels, and the word *holding* removed from the leaderboard and the scorecard |
 
 Live database state: league **In The Oven** (`in-the-oven`, default), 2 players,
@@ -189,7 +190,9 @@ src/
     Leaderboard.jsx  the table, the reorder, and the chart's controls
     PointsChart.jsx  hand-rolled SVG; three line states, table fallback
     ResultsGrid.jsx  this week, in three states that must not look alike
-    PredictionWall.jsx  everyone's picks — empty until the deadline, by design
+    PredictionWall.jsx  everyone's picks, sealed until the episode AIRS. Until
+                        then it is the same roster with the contents withheld —
+                        who is in, who still has nothing. A count, never a pick
     TopThreeBoard.jsx   everyone's three — empty until EPISODE 2's deadline,
                         same reason, same shape
     GuessBoard.jsx      everyone's two bakes — empty until EPISODE 1 goes
@@ -607,10 +610,48 @@ wall cell is a name in a box with no room for a sentence, so the tint would be
 carrying the meaning alone. `src/components/Mark.jsx` is the shared mark and its
 header explains the split.
 
-**The wall is empty right now and that is the system working.** No episode has an
-air date, so none has a `live_at`, and `v_public_predictions` fails closed on
-exactly that. The panel says which of the two reasons applies rather than showing
-a blank.
+**Before the episode airs it shows the same roster with the contents withheld** —
+`SealedWall`, in the same file. Every player is a row, submitted or not: one with
+picks in gets a solid band of icing and a `4/5`, one with nothing gets the dashed
+stitch border and *Nothing in yet*. The panel used to be a paragraph saying the
+picks were hidden, which was true and answered nobody's actual question on a
+Tuesday afternoon — *who still hasn't done theirs?*
+
+Showing **only the people who are in** was the other option and is the weaker
+one: it makes "missing" an absence, and an absence is something you have to know
+the roster to notice. A gap in a column is something you can see.
+
+**It needed no SQL and no new grant**, which is the part worth not re-deriving.
+`v_episode_scores` is granted with no gate of its own and its spine is every live
+entry, so `picks_made` has been a public fact since phase 4 — the same one the
+GM's Entries tab shows as "3 of 8 in", at the other end of the wire. **A count is
+not a pick.** *Which* categories somebody has filled in is published nowhere, and
+publishing it means a column on that view, a smoke-test assertion and a paste. It
+buys "Sam skipped the bingo", and that is not worth a permission-boundary edit.
+
+Three details that fall out of the data rather than being decided:
+
+- The test is **`picks_made > 0`, not "has an entry row"**, so an empty saved card
+  reads as nothing in — which is RULES §2.5's own rule, arrived at without this
+  having to know it. A disallowed entry drops out of `v_episode_scores` and reads
+  the same way, which is also what that rule says.
+- **Lateness and `confirmed` ride on the same view**, so the 18:00–20:00 window
+  names its latecomers here as well as on the revealed wall, and the −2 lands in
+  the count column the moment it is owed.
+- **The band is icing, not grey**, deliberately: grey is the revealed wall's
+  *wrong* pick (DESIGN §7). Blank reuses `.pending` — the same mark and the same
+  meaning as a result still to come.
+
+**When you see it at all is decided by `pickWall`**: from a day before the
+deadline until the episode airs, plus the whole run-up to episode 1. The rest of
+the week the slot holds last week's revealed wall, which is the right trade — a
+table of blanks on a Wednesday morning is not news. If it should be up all week,
+the dial is `ONE_DAY_MS`.
+
+**The wall's picks are empty right now and that is the system working.** No
+episode has an air date, so none has a `live_at`, and `v_public_predictions`
+fails closed on exactly that — so the sealed face is what `/` shows today, and it
+still says which of the two reasons applies rather than going blank.
 
 **A finished week keeps its wall for a few days** — `pickWall` in
 `src/lib/dashboard.js`, added after this phase. Marking an episode complete is

@@ -853,6 +853,44 @@ textarea.input { resize: vertical; line-height: 1.4; }
   text-align: center;
 }
 
+/* ---- The wall before the reveal ---- */
+
+/* The same table with the contents withheld, so the league can see who still
+   has nothing in. Four columns instead of nine, so it fits a phone and does not
+   need the sideways scroll the revealed wall is built around — the min-width is
+   a floor for a very narrow screen, not the 40rem the categories demand. */
+.wall-tally { margin: .1rem 0 .6rem; font-size: .85rem; color: var(--ink-soft); }
+.wall-tally strong { color: var(--ink); }
+.wall-sealed { min-width: 20rem; }
+/* More room for the name than the revealed wall can spare: nothing is competing
+   for the width here. */
+.wall-sealed .wall-name { width: 7.5rem; }
+
+.wall-seal-band {
+  display: block;
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: .45rem .5rem;
+  font-size: .78rem; font-weight: 800;
+  text-align: center;
+}
+/* In: a solid band of icing — a card face-down. Deliberately NOT the grey the
+   revealed wall gives a wrong pick, which is the same tile a week later meaning
+   something else entirely. */
+.wall-seal.in .wall-seal-band { background-color: var(--icing); color: var(--ink); }
+/* Nothing in: plainly blank behind the stitch border DESIGN §7 keeps for
+   provisional things — the same mark, and the same meaning, as a result still
+   to come. The word carries it; the texture is not on its own (DESIGN §5). */
+.wall-seal.out .wall-seal-band {
+  background-color: var(--card);
+  border: 2px dashed var(--line);
+  color: var(--ink-soft);
+}
+.howto-swatch.sealed { background: var(--icing); border-color: var(--icing); }
+
+/* Not red: "I'm done" is not a warning, and --live is reserved (DESIGN §3). */
+.flag.done { color: var(--ink); background: var(--mint); }
+
 /* The GM's switch, applied to the whole entry: struck through, and the picks
    hatched over — the same texture the results grid uses for a category that
    paid nobody, and for the same reason. It reads as struck out without colour. */

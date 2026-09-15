@@ -9,13 +9,19 @@ import { HowToRead, Note } from './HowToRead.jsx'
 /**
  * Everyone's picks, ticking as the results land. The bit people shout at.
  *
- * IT IS SUPPOSED TO BE EMPTY BEFORE THE DEADLINE, and it will be empty for
- * every episode in the database today, because none of them has a deadline yet.
- * That is the system working. The rows come from v_public_predictions, whose
+ * THE PICKS ARE SUPPOSED TO BE EMPTY BEFORE THE EPISODE AIRS, and they will be
+ * for every episode in the database today, because none of them has an air date
+ * yet. That is the system working. They come from v_public_predictions, whose
  * WHERE clause is the whole of "nobody sees your picks early" and which fails
- * closed on a null deadline — an episode nobody can be late for is one whose
- * picks stay private. Nothing here reads `predictions` or `entries`, and
- * nothing here may.
+ * closed on a null date — an episode that cannot have aired is one whose picks
+ * stay private. Nothing here reads `predictions` or `entries`, and nothing here
+ * may.
+ *
+ * What is on screen until then is SealedWall below: the same roster with the
+ * contents withheld, so the league can see who still has nothing in. It is
+ * built from v_episode_scores.picks_made — a count, never a pick — and the
+ * `predictions` array is empty in that branch anyway, so a mistake there has no
+ * baker's name in scope to leak.
  *
  * A table: players down, the week's points beside the name, then the
  * categories across. It scales where cards don't — sixteen players is sixteen
@@ -56,14 +62,15 @@ export function PredictionWall({
 
   if (!episode.predictions_public) {
     return (
-      <Panel head={head}>
-        <h2>Everyone’s picks are hidden</h2>
-        <p className="muted">
-          {episode.live_at
-            ? `They all appear here the moment episode ${episode.number} starts airing — ${countdown.label.toLowerCase()}.`
-            : `Episode ${episode.number} has no date yet, so nobody can be late for it and nobody’s picks are public. They appear here as soon as the schedule is set.`}
-        </p>
-      </Panel>
+      <SealedWall
+        head={head}
+        episode={episode}
+        countdown={countdown}
+        categories={categories}
+        standings={standings}
+        scores={scores}
+        meId={meId}
+      />
     )
   }
 
@@ -152,6 +159,149 @@ export function PredictionWall({
       </HowToRead>
     </Panel>
   )
+}
+
+/**
+ * The wall before the picks are public: the whole roster, with the contents
+ * withheld. It answers the one question the sealed panel used to leave to a
+ * paragraph — who still has nothing in — and it is the reason the panel shows a
+ * table rather than a sentence.
+ *
+ * EVERY PLAYER IS A ROW, submitted or not, which is the whole design. Showing
+ * only the people who are in makes "missing" an absence, and an absence is
+ * something you have to already know the roster to notice; a gap in a column is
+ * something you can see.
+ *
+ * It needs NO new data and no SQL. v_episode_scores is granted with no gate of
+ * its own and its spine is every live entry, so `picks_made` is a public fact
+ * from the moment somebody saves — the same fact the GM's Entries tab shows as
+ * "3 of 8 in", at the other end of the wire. The count is all that crosses:
+ * WHICH categories somebody has filled in is not published anywhere, and a
+ * baker's name certainly isn't.
+ *
+ * The test is `picks_made > 0` rather than "has a row", because RULES §2.5 says
+ * an empty saved card is the same as never opening the panel — so the two agree
+ * without this having to know the rule.
+ *
+ * When this panel is on screen is decided by pickWall: from a day before the
+ * deadline until the episode airs, plus the whole run-up to episode 1. The rest
+ * of the week the slot holds last week's revealed wall.
+ */
+function SealedWall({ head, episode, countdown, categories, standings, scores, meId }) {
+  const weeks = new Map(
+    scores.filter((s) => s.episode_id === episode.id).map((s) => [s.player_id, s])
+  )
+  const inCount = standings.filter((p) => (weeks.get(p.player_id)?.picks_made ?? 0) > 0).length
+
+  return (
+    <Panel head={head}>
+      <h2>Everyone’s picks are hidden</h2>
+      <p className="muted">
+        {episode.live_at
+          ? `They all appear here the moment episode ${episode.number} starts airing — ${countdown.label.toLowerCase()}.`
+          : `Episode ${episode.number} has no date yet, so nobody can be late for it and nobody’s picks are public. They appear here as soon as the schedule is set.`}
+      </p>
+
+      {/* The tally the GM's Entries tab already gives the GM. It is also what
+          makes the table readable at a glance from across a room, where the
+          rows are too small to count. */}
+      <p className="wall-tally">
+        <strong>{inCount} of {standings.length}</strong> in so far
+      </p>
+
+      <div className="scroll-x">
+        <table className="wall-table wall-sealed">
+          <thead>
+            <tr>
+              <th scope="col" className="wall-face"></th>
+              <th scope="col" className="wall-name">Player</th>
+              <th scope="col" className="wall-score">In</th>
+              <th scope="col">This week</th>
+            </tr>
+          </thead>
+          <tbody>
+            {standings.map((player) => (
+              <SealedRow
+                key={player.player_id}
+                player={player}
+                week={weeks.get(player.player_id) ?? null}
+                total={categories.length}
+                isMe={player.player_id === meId}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <HowToRead>
+        <Note term={<span className="howto-swatch sealed">&nbsp;</span>}>
+          Their picks are in, and stay hidden until the episode airs.
+        </Note>
+        <Note term={<span className="howto-swatch pending">&nbsp;</span>}>
+          Nothing in yet.
+        </Note>
+        <Note term={`3/${categories.length}`}>
+          How many categories they have filled in. Never which ones, and never
+          who they picked.
+        </Note>
+        <Note term="Confirmed">
+          They have pressed Confirm, so their own card is locked until they
+          unlock it. It changes nothing about their score.
+        </Note>
+        <Note term="Late &minus;2">
+          Submitted after six o&rsquo;clock on the day, which costs two points.
+          Their picks still score as normal.
+        </Note>
+      </HowToRead>
+    </Panel>
+  )
+}
+
+/** One player, before the reveal: are they in, and how far. */
+function SealedRow({ player, week, total, isMe }) {
+  const made = week?.picks_made ?? 0
+  const isIn = made > 0
+
+  return (
+    <tr className={isMe ? 'me' : ''}>
+      <td className="wall-face">
+        <Avatar name={player.display_name} colour={player.colour_hex} size={26} />
+      </td>
+
+      <th scope="row" className="wall-name">
+        <span className="wall-nm">{player.display_name}</span>
+        <span className="wall-flags">
+          {isMe && <span className="flag you">You</span>}
+          {/* Lateness rides on v_episode_scores too, so the 18:00–20:00 window
+              names its latecomers here as well as on the revealed wall. */}
+          {week?.lateness === 'late' && <span className="flag">Late &minus;2</span>}
+          {week?.lateness === 'very_late' && <span className="flag">Very late &minus;2</span>}
+          {isIn && week?.confirmed && <span className="flag done">Confirmed</span>}
+        </span>
+      </th>
+
+      <td className="wall-score">
+        <span className="score-number">{progress(week, made, total)}</span>
+      </td>
+
+      <td className={`wall-seal ${isIn ? 'in' : 'out'}`}>
+        <span className="wall-seal-band">
+          {isIn ? 'Picks in, sealed' : 'Nothing in yet'}
+        </span>
+      </td>
+    </tr>
+  )
+}
+
+/**
+ * The count column. Nothing in reads as a dash until 18:00 goes, at which point
+ * v_episode_scores gains a row carrying the −2 of RULES §2.5 — and showing it
+ * is the difference between a nudge and a scoreboard. An empty saved card has a
+ * row too, worth nothing, and stays a dash.
+ */
+function progress(week, made, total) {
+  if (made > 0) return `${made}/${total}`
+  return week && week.points < 0 ? signed(week.points) : '—'
 }
 
 function Row({ player, categories, picks, bakerNames, results, week, isMe }) {
