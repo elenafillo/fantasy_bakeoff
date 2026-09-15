@@ -97,6 +97,22 @@ export default function Bakers() {
         {inTent} still in
         {left > 0 && <> · {left} gone home</>}
       </p>
+      {/* The broadcaster's own cast page, which carries the full-length
+          profiles this page deliberately does not — a card here is a face, a
+          name and one line, and anyone who wants the rest should get it from
+          the source rather than from a paraphrase of it that would rot.
+          The year is hardcoded: `seasons.year` exists but is not on any
+          granted view, and widening one to carry a link is not worth a
+          permission-boundary change (CLAUDE.md, invariant 1). */}
+      <p className="small cast-link">
+        <a
+          href="https://thegreatbritishbakeoff.co.uk/meet-the-class-of-2026/"
+          target="_blank"
+          rel="noreferrer noopener"
+        >
+          Click here to read the full descriptions
+        </a>
+      </p>
       <ul className="cast">
         {sorted.map((baker) => (
           <BakerCard key={baker.baker_id} baker={baker} />
