@@ -10,7 +10,7 @@
 // would mean the browser deciding what a credential is.
 //
 // The pattern is:  adjective · bake        e.g. velvet-crumb, burnt-caramel
-// Combinations are the product of the two lists — 37 × 33 = 1,221 as written.
+// Combinations are the product of the two lists — 35 × 32 = 1,120 as written.
 //
 // These lists are NOT secret. Knowing the vocabulary doesn't help you guess a
 // code, because it also has to exist in the database — and `players` has no
@@ -30,18 +30,18 @@
 //     and makes prettyCode() fall back to the unsplit form.
 
 export const ADJECTIVES = [
-  'velvet', 'burnt', 'golden', 'soggy', 'crisp', 'sticky', 'toasted', 'brandy',
-  'salted', 'candied', 'buttered', 'glossy', 'humble', 'lavish', 'crumbly', 'silky',
+  'velvet', 'burnt', 'golden', 'soggy', 'crisp', 'sticky', 'toasted', 
+  'salted', 'candied',  'glossy', 'humble', 'lavish', 'crumbly', 'silky',
   'spiced', 'zesty', 'frosted', 'marbled', 'risen', 'folded', 'whipped',
   'dusted', 'glazed', 'stuffed', 'rustic', 'dainty', 'hearty', 'smoky', 'tangy',
   'nutty', 'boozy', 'syrupy', 'flaky', 'jammy',  'wobbly',
 ]
 
 export const BAKES = [
-  'crumb', 'caramel', 'brioche', 'pavlova', 'scone', 'eclair', 'strudel', 'ganache',
-  'praline', 'meringue', 'tartlet', 'baklava', 'crumpet', 'flapjack', 'shortbread', 'parkin',
+  'crumb', 'caramel', 'brioche', 'biscuit', 'scone', 'eclair', 'strudel', 'ganache',
+  'praline', 'meringue', 'tartlet', 'baklava', 'crumpet', 'flapjack', 'shortbread', 'mousse',
   'macaron', 'madeleine', 'profiterole', 'panettone',  'teacake',
-  'crostata', 'gingerbread', 'sponge', 'trifle', 'custard', 'fondant',
+  'gingerbread', 'sponge', 'trifle', 'custard', 'fondant',
   'marzipan', 'wafer', 'churro', 'blondie', 'cannoli', 'tiramisu',
 ]
 
