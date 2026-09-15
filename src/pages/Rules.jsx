@@ -1,6 +1,28 @@
 import { Panel } from '../components/Panel.jsx'
 
 /**
+ * The feedback form, twice. ONE Google Form, with the "what kind of thing is
+ * this" question pre-filled from the URL — so the two buttons below are the
+ * same destination with a different answer already ticked.
+ *
+ * Two links rather than one because the question the reader arrives with is
+ * already either "this is broken" or "this could be better", and making them
+ * re-state it on the form is a step that earns nothing. Only the
+ * `entry.139240661` value differs; everything else is identical, so if the form
+ * is ever rebuilt BOTH need replacing — a rebuilt form gets a new id and the
+ * old links die silently, landing on a Google 404 rather than erroring here.
+ *
+ * Deliberately off-site: collecting this in the app would mean the browser's
+ * first write permission to the database, and an anon insert policy is exactly
+ * what views.sql exists to keep out.
+ */
+const BUG_FORM =
+  'https://docs.google.com/forms/d/e/1FAIpQLSd2qh1fzMefQPjqXJHQuj2-6haPeEKuK3BGpicM9N3dRv8pZg/viewform?usp=pp_url&entry.139240661=A+bug+(something+isn%27t+working)'
+
+const IDEA_FORM =
+  'https://docs.google.com/forms/d/e/1FAIpQLSd2qh1fzMefQPjqXJHQuj2-6haPeEKuK3BGpicM9N3dRv8pZg/viewform?usp=pp_url&entry.139240661=An+improvement+(things+work,+but+I+think+they+could+be+better)'
+
+/**
  * The short version of RULES.md — the points, the deadline, the penalty, the
  * top three and the weeks that don't behave (TECH_PLAN §5).
  *
@@ -200,19 +222,37 @@ export default function Rules() {
         </p>
       </Panel>
 
-      {/* The colophon, alone in its own box. Wording and link are Elena's, and
-          the attribution half is hers on purpose — it credits somebody else's
-          game, and that is not a thing to guess at. Note it says UNOFFICIAL:
-          that site states it is not affiliated with the programme, Channel 4 or
-          Love Productions, so calling it official would be wrong twice over. */}
-      <Panel>
-        <p className="colophon">
+      {/* The credit and the feedback form, in one box. They were two, and the
+          merge is Elena's call: both are about the SITE rather than the game,
+          so they belong after every rule and next to each other.
+
+          Wording and link are hers. Note it says UNOFFICIAL: the site it
+          credits states it is not affiliated with the programme, Channel 4 or
+          Love Productions, so calling it official would be wrong twice over.
+
+          No .colophon class on the paragraph any more. That style is small,
+          soft and ruled off above — which was right for a credit sitting alone
+          in a box, and wrong for the lead paragraph of a headed section. Its
+          border-top is suppressed only for an :only-child, so keeping it here
+          would draw a line under the head across empty space. */}
+      <Panel head="About this Fantasy Bake Off">
+        <p>
           This game is a home-made version of the unofficial{' '}
           <a href="https://fantasybakeoff.co.uk/" target="_blank" rel="noreferrer noopener">
             Fantasy Bake Off
           </a>
-          . Built with Claude Opus 5.
+          , built with Claude Opus 5. If something does not work as you expect,
+          or there is something that could be improved, please report it through
+          the following form:
         </p>
+        <div className="actions">
+          <a className="btn" href={BUG_FORM} target="_blank" rel="noreferrer noopener">
+            Report a bug
+          </a>
+          <a className="btn" href={IDEA_FORM} target="_blank" rel="noreferrer noopener">
+            Suggest an improvement
+          </a>
+        </div>
       </Panel>
     </>
   )
