@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#fbebf1" />
+    <!-- A PNG, not an SVG-with-an-emoji-in-it: an SVG favicon renders in the
+         viewer's own emoji font, so the tab would look different on every phone,
+         and iOS ignores SVG for the home-screen icon entirely. Baked once at
+         180px on the page pink (iOS fills transparency with black). -->
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
