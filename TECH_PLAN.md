@@ -880,7 +880,7 @@ unusually, because the views have nothing to read without the tables.
 ### The game
 
 **Once per series, before episode 1**, every player names **two bakes** they
-think will come up — "madeleine", "croquembouche", "choux". Free text, invented
+think will come up — "madeleine", "croquembouche", "babka". Free text, invented
 by the player. A guess pays out the week it appears, once:
 
 | Who said it | If it comes up |
@@ -1095,9 +1095,9 @@ answer per challenge, which matters because the GM is ruling live while also
 playing.
 
 It also settles the "cake" case, which was noted as probably falling out of
-those two and does: a guess must be a specific bake, ingredient or technique,
-and the GM may reject one before the lock — but the tiers mostly handle it
-anyway, since an obvious guess attracts company and pays nothing.
+those two and does: a guess must be a specific bake — not an ingredient or a
+technique — and the GM may reject one before the lock, but the tiers mostly
+handle it anyway, since an obvious guess attracts company and pays nothing.
 
 ---
 

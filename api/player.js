@@ -622,7 +622,7 @@ async function prepareGuesses(player, guesses, lock, now) {
     // Not a rule about what a good guess is — that is RULES §6 and the GM's
     // call before the lock — just a floor under what counts as an answer.
     if (derived.length < 2) {
-      return { status: 400, error: `"${text}" isn't a bake. Try a name, an ingredient or a technique.` }
+      return { status: 400, error: `"${text}" isn't a bake. Try the name of one.` }
     }
 
     const was = existing.find((g) => g.slot === i + 1) ?? null

@@ -229,8 +229,9 @@ Before the series starts, you name **two bakes** you think will come up.
   deadline, the same LATE and VERY LATE flags, the same GM door — and they ride
   on that week's entry, so a late save is one late submission and one −2, not
   three.
-- **What:** free text — a bake, an ingredient, a technique. *"madeleine"*,
-  *"croquembouche"*, *"choux"*. You invent it; there is no list to pick from.
+- **What:** free text, but a **bake** — the thing a challenge is set on, not an
+  ingredient or a technique that goes into one. *"madeleine"*,
+  *"croquembouche"*, *"babka"*. You invent it; there is no list to pick from.
 - **Two different guesses**, and you are stuck with them for the series.
 
 ### Why before episode 1, and not week by week
@@ -272,9 +273,10 @@ what counts.** A guess hits when the word appears in the announced title of the
 - **Whole bakes only.** A component *inside* a bake does not count unless the
   title names it. A chocolate egg sitting on a larger showstopper is not a hit;
   *"Chocolate Egg Showstopper"* is.
-- A guess must be a **specific bake, ingredient or technique**. The GM may
-  reject one before the lock — but the tiers mostly handle this on their own,
-  since an obvious guess attracts company and pays nothing.
+- A guess must be a **specific bake** — not an ingredient and not a technique,
+  since neither is what a title announces. The GM may reject one before the
+  lock — but the tiers mostly handle this on their own, since an obvious guess
+  attracts company and pays nothing.
 
 The GM's ruling on whether a guess came up is final, in the same way as the
 Bingo Bonus.
