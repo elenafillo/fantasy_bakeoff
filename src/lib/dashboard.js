@@ -179,11 +179,12 @@ export async function fetchReference(league) {
       order: 'sort_order.asc',
     }),
     supabase.query('v_baker_stats', {
-      // picked_leaving feeds the stats strip's "written off, still here". It
-      // sits in the once-only fetch rather than the poll because it can only
-      // change when a deadline passes — a weekly event, not a live one — and
-      // v_baker_stats is twelve correlated subqueries.
-      select: 'baker_id,name,status,eliminated_episode,picked_leaving',
+      // Names and status only, and deliberately none of this view's
+      // prediction-derived columns. picked_leaving used to ride along here for
+      // the stats strip's "written off, still here"; it is now counted in the
+      // browser from this league's own picks (fetchLive below), because every
+      // count on this view is keyed on the baker and has no league filter.
+      select: 'baker_id,name,status,eliminated_episode',
       params: { season_id: `eq.${league.season_id}` },
     }),
   ])
@@ -247,7 +248,7 @@ export async function fetchLive(league) {
   const ids = standings.map((r) => r.player_id)
   const inLeague = `in.(${ids.join(',')})`
 
-  const [scores, predictions, topPicks, guesses] = await Promise.all([
+  const [scores, predictions, topPicks, guesses, leavingPicks] = await Promise.all([
     ids.length
       ? supabase.query('v_episode_scores', {
           select:
@@ -300,10 +301,31 @@ export async function fetchLive(league) {
           order: 'slot.asc',
         })
       : [],
+    // Every "who is going home" pick THIS LEAGUE has made, all episodes — the
+    // stats strip's "written off, still here" (writtenOff in stats.js). It
+    // counts the same rows v_baker_stats.picked_leaving counts, minus the
+    // leagues this table is not about: that column is keyed on the baker and
+    // has no league filter, so with two leagues on one season both dashboards
+    // showed the same number and neither was about the room reading it. The
+    // player filter is what scopes it, exactly as it scopes the three above.
+    //
+    // It is in the poll where it used to be in the once-only fetch, and that is
+    // a fix rather than a cost. The old note here said this could only change
+    // when a deadline passed; since phase 9 the reveal is the BROADCAST, so the
+    // count moves in the middle of the live hour. One column and one category,
+    // so it is a few hundred bytes a poll — v_baker_stats, twelve correlated
+    // subqueries, is what had to stay out of the loop, and still does.
+    ids.length
+      ? supabase.query('v_public_predictions', {
+          select: 'baker_id,is_disallowed',
+          params: { category: 'eq.leaving', player_id: inLeague },
+        })
+      : [],
   ])
 
   return {
     episodes, currentEpisode, wallEpisode, standings, results, scores, predictions, topPicks, guesses,
+    leavingPicks,
   }
 }
 

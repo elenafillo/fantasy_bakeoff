@@ -6,10 +6,18 @@
 //
 // NOTHING HERE IS A SCORING RULE. Every number below is either counted from
 // rows SQL already decided (v_episode_scores' points and correct_count,
-// v_baker_stats' picked_leaving) or worked out with `verdictFor` — the single
+// v_public_predictions' picks) or worked out with `verdictFor` — the single
 // derivation the browser is allowed, and the same one the scorecard and the
 // wall use. If a stat ever needs to know what a category is worth, or when a
 // penalty fires, it belongs in views.sql instead. See TECH_PLAN §2.
+//
+// EVERY CARD IS ABOUT THE LEAGUE ON SCREEN, and that holds only because the
+// rows arrive pre-filtered: v_episode_scores and v_public_predictions carry no
+// league_id, so fetchLive filters both by the player ids v_standings supplies
+// (its header explains why that filter is load-bearing). "Written off" was the
+// exception until TECH_PLAN Still-open #10 was settled — it read
+// v_baker_stats.picked_leaving, which is keyed on the baker and counts every
+// league playing the season. No card may go back to a per-baker count.
 //
 // Every builder returns null when it has nothing to say, and the strip renders
 // only what came back. Before the first result that is all of them, which is
@@ -20,7 +28,9 @@ import { verdictFor, nameList } from './scores.js'
 /**
  * @returns {Array<{key, label, value, detail}>}
  */
-export function buildStats({ predictions, results, scores, standings, bakerNames, bakers, episode }) {
+export function buildStats({
+  predictions, results, scores, standings, bakerNames, bakers, leavingPicks, episode,
+}) {
   const names = Object.fromEntries(standings.map((p) => [p.player_id, p.display_name]))
   const live = (predictions ?? []).filter((p) => !p.is_disallowed)
   const thisWeek = (results ?? []).filter((r) => r.episode_id === episode?.id)
@@ -30,7 +40,7 @@ export function buildStats({ predictions, results, scores, standings, bakerNames
   // and mixing them made the strip read as five unrelated facts.
   return [
     favourite(live, bakerNames),
-    writtenOff(bakers),
+    writtenOff(bakers, leavingPicks),
     loneCall(live, thisWeek, names),
     biggestWeek(scores, names),
     sharpest(scores, names),
@@ -130,21 +140,38 @@ function biggestWeek(scores, names) {
 
 // ------------------------------------------------------------
 /**
- * The baker everyone keeps burying who is still in the tent.
+ * The baker everyone keeps burying who is still in the tent — counted from
+ * THIS LEAGUE's picks.
  *
- * `picked_leaving` counts across EVERY league playing the season, because
- * v_baker_stats is keyed on the baker and has no league filter (TECH_PLAN §5).
- * With one league running they are the same number.
+ * It read `v_baker_stats.picked_leaving` until TECH_PLAN Still-open #10 was
+ * settled. That column is keyed on the baker and has no league filter, so with
+ * two leagues on one season both dashboards showed the same number and neither
+ * was about the room reading it. Fixing it in SQL would have meant a view keyed
+ * the wrong way and a permission-boundary paste; this is a tally instead —
+ * exactly the shape `favourite` above already had.
+ *
+ * `leavingPicks` is every 'leaving' pick in the league, across the series,
+ * already scoped by fetchLive's player filter and already gated by
+ * v_public_predictions. So this counts rows, and decides nothing.
  */
-function writtenOff(bakers) {
-  const survivors = (bakers ?? []).filter((b) => b.status !== 'eliminated' && b.picked_leaving > 0)
+function writtenOff(bakers, leavingPicks) {
+  const tally = new Map()
+  // Disallowed picks are dropped here rather than in the query, to match the
+  // `live` filter in buildStats and the `not vp.is_disallowed` the SQL count
+  // used: an entry the GM threw out is not an opinion the room held.
+  for (const p of leavingPicks ?? []) {
+    if (!p.is_disallowed) tally.set(p.baker_id, (tally.get(p.baker_id) ?? 0) + 1)
+  }
+
+  const count = (b) => tally.get(b.baker_id) ?? 0
+  const survivors = (bakers ?? []).filter((b) => b.status !== 'eliminated' && count(b) > 0)
   if (survivors.length === 0) return null
 
-  const top = Math.max(...survivors.map((b) => b.picked_leaving))
+  const top = Math.max(...survivors.map(count))
   // Once is not a story. Twice is.
   if (top < 2) return null
 
-  const who = survivors.filter((b) => b.picked_leaving === top).map((b) => b.name)
+  const who = survivors.filter((b) => count(b) === top).map((b) => b.name)
   return {
     key: 'survivor',
     label: 'Written off',
