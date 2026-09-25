@@ -285,10 +285,14 @@ export default function Dashboard({ slug }) {
         meId={resolved.you}
       />
 
-      {/* Below the wall, above the recap: it changes about four times a series,
-          so it sits under everything that changes weekly — but it is a live
-          story ("three people are riding on Priya"), not history, so it stays
-          out of the recap. */}
+      {/* Straight under the wall, because two of its cards — the favourite and
+          the lone call — are read against it, and follow its week (pickWall). */}
+      <StatsStrip stats={stats} />
+
+      {/* Below the wall and the numbers, above the recap: it changes about four
+          times a series, so it sits under everything that changes weekly — but
+          it is a live story ("three people are riding on Priya"), not history,
+          so it stays out of the recap. */}
       <TopThreeBoard
         topPicks={live.topPicks}
         standings={live.standings}
@@ -304,11 +308,6 @@ export default function Dashboard({ slug }) {
         standings={live.standings}
         episodeOne={live.episodes.find((e) => e.number === 1) ?? null}
       />
-
-      {/* Above the recap: these are facts about the season so far, and the
-          recap is the season so far. Both collapsed, both the least live
-          things here. */}
-      <StatsStrip stats={stats} />
 
       <SeriesRecap
         episodes={live.episodes}

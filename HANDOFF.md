@@ -805,7 +805,8 @@ value that framed all twelve heads without decapitating the full-length shots.
 re-pasted, and the smoke test passes.
 
 The picker sits on `/play` **below** the weekly predictions, as a once-per-series
-item; the board sits on the dashboard below the wall and above the recap.
+item; the board sits on the dashboard below the wall and the stats strip, and
+above the recap.
 
 ### One clock, derived, never stored
 
@@ -907,7 +908,9 @@ each — everything cascades.
 
 ### The stats strip
 
-Five cards on the dashboard, above the recap:
+Five cards on the dashboard, straight under the wall — moved there from above
+the recap on 2026-09-25, because two of them are read against the wall and
+follow its week:
 
 | | |
 |---|---|
