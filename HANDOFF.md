@@ -17,8 +17,10 @@ Players predict each week's Star Baker, elimination, technical winner, Hollywood
 handshake and a GM-written bingo event. Points land **live as the episode airs**,
 which is the whole point — the leaderboard moves while everyone watches.
 
-The series has **ten episodes**. The start date has not been announced (expected
-late September 2026), so nothing is time-pressured yet.
+The series has **ten episodes**, weekly on Tuesdays: **22 September to 24
+November 2026**. **The league is live** — episode 1 has aired, been marked
+complete, and scored. Changes now land in front of real players; the deadline
+and the air time are the times to avoid deploying.
 
 ---
 
@@ -40,23 +42,20 @@ late September 2026), so nothing is time-pressured yet.
 | — the wall before the reveal | ✅ **Done**, outside the phase numbering. The sealed wall was a paragraph saying the picks were hidden; it is now the whole roster with the contents withheld — who is in, how far, who is late, who has confirmed — so it answers *who still hasn't done theirs?* **No SQL, no new grant, nothing to paste**: `picks_made` and `confirmed` were already on `v_episode_scores`, which is granted and ungated. A count is not a pick |
 | — the bonus gets a week, and the dashboard a key | ✅ **Done**, outside the phase numbering. The top-three bonus now lands on the semi-final (+3 each) and the final (+6), which is what RULES §5 always said and nothing implemented — so the chart and the leaderboard agree again, and the bonus moves the table on the night. `views.sql` → `rls.sql` applied, smoke test passing. **No new grant.** Plus a shut-by-default "How to read this" at the foot of six dashboard panels, and the word *holding* removed from the leaderboard and the scorecard |
 
-Live database state: league **In The Oven** (`in-the-oven`, default), 2 players,
-the real 12-baker cast with names, bios and photos, 10 episodes with no air
-dates. Still one league — the panel now supports several, but none have been
-made.
+Live database state, as of **2026-09-25** (read through the public views):
 
-⚠️ **Two throwaway demo seasons are also in the database** —
-`DEMO — dashboard preview` (at `/league/demo-tent`) and `DEMO — picking` (log in
-with `zzdemo zzpicker`). They were built to look at the UI with real-shaped data
-and they use the same twelve baker names, so **any query that does not filter by
-season now sees three Claras**. Every page does filter, so nothing is broken.
-Delete both when they stop being useful: one `delete from seasons` each, and
-everything cascades.
-
-⚠️ **The real league still carries fictional phase 3/4 test results** — Gabe
-reads as eliminated in episode 1, Gary as a Star Baker, Shannon as a technical
-winner. It is public on `/bakers`, the dashboard and now the stats strip. Clear
-it before the link goes round.
+- **One season, three leagues** on it: **Sussex Oven** (`sussex-oven`, the
+  default, 15 players), **Jammiest** (`jammiest`) and **ACRG-bakes**
+  (`acrg-bakes`). The switcher at the foot of `/` shows all three.
+- **All ten episodes have dates**: 18:00 deadline, 20:00 air, UK time — stored
+  as 17:00/19:00 UTC through episode 5 and 18:00/20:00 UTC once the clocks go
+  back, which is the trigger doing its job, not a typo.
+- **Episode 1 is `complete`**, with points on the table. Episode 2 is current:
+  deadline Tue 29 Sep. So `/` is in the `pickShown` window right now — two
+  results boxes, the week column on episode 1 (phase 5 below).
+- The real 12-baker cast. The two demo seasons and the fictional phase 3/4 test
+  results are **gone** — the public views see one season and none of the old
+  test winners.
 
 ---
 
@@ -189,7 +188,8 @@ src/
     Scorecard.jsx how a week went. Plain props, no fetching.
     Leaderboard.jsx  the table, the reorder, and the chart's controls
     PointsChart.jsx  hand-rolled SVG; three line states, table fallback
-    ResultsGrid.jsx  this week, in three states that must not look alike
+    ResultsGrid.jsx  this week, in three states that must not look alike; drawn
+                     twice until the next deadline (`last`, pickShown)
     PredictionWall.jsx  everyone's picks, sealed until the episode AIRS. Until
                         then it is the same roster with the contents withheld —
                         who is in, who still has nothing. A count, never a pick
@@ -497,7 +497,9 @@ the moment you mark an episode complete on the Episodes tab, `/play` moves on to
 next week and last night's ticks disappear from it; the running total in the
 header stays. Phase 5's series recap is where the history belongs, and the data
 is already in `v_episode_scores`. If you want to look at a week for a while,
-leave it `live` rather than `complete`.
+don't mark it `complete` yet — but that also keeps next week's picks shut. The
+dashboard holds a finished week until the next deadline anyway (`pickShown`,
+phase 5 below), so `/play` is the only screen this still costs.
 
 **Discussed and deferred:** a one-line "your weeks so far" strip on `/play`
 (`Ep 1 · 1 · Ep 2 · 7 …`). Nearly free — `fetchScoreboard` already pulls every
@@ -642,34 +644,58 @@ Three details that fall out of the data rather than being decided:
   *wrong* pick (DESIGN §7). Blank reuses `.pending` — the same mark and the same
   meaning as a result still to come.
 
-**When you see it at all is decided by `pickWall`**: from a day before the
+**When you see it at all is decided by `pickWall`**: from two days before the
 deadline until the episode airs, plus the whole run-up to episode 1. The rest of
 the week the slot holds last week's revealed wall, which is the right trade — a
-table of blanks on a Wednesday morning is not news. If it should be up all week,
-the dial is `ONE_DAY_MS`.
+table of blanks on a Wednesday morning is not news. If it should be up longer or
+shorter, the dial is `SEAL_LEAD_MS` (it was one day until 2026-09-25).
 
-**The wall's picks are empty right now and that is the system working.** No
-episode has an air date, so none has a `live_at`, and `v_public_predictions`
-fails closed on exactly that — so the sealed face is what `/` shows today, and it
-still says which of the two reasons applies rather than going blank.
+**An episode with no air date shows the sealed face, and that is the system
+working.** No date means no `live_at`, and `v_public_predictions` fails closed on
+exactly that — the sealed face then says which of the two reasons applies
+rather than going blank. This was the state of the whole series until the
+schedule was entered in September 2026.
 
 **A finished week keeps its wall for a few days** — `pickWall` in
 `src/lib/dashboard.js`, added after this phase. Marking an episode complete is
 what moves everyone on, and next week's picks are sealed until its own deadline,
 so the wall used to go blank for most of a week the moment you finished typing
-results — before half the league had looked at it. It now stays up until **a day
-before the next deadline**, then hands over to the sealed panel and its
+results — before half the league had looked at it. It now stays up until **two
+days before the next deadline**, then hands over to the sealed panel and its
 countdown. The band names the episode on every wall (`The wall · Episode 1`) and
 a notice above the table says it is last week's; the stats strip's two
 pick-based cards follow the same week, since the lone call is a thing you read
-*against* the wall. An episode with no deadline of its own has no "day before"
-to count to, so last week's holds until the schedule lands.
+*against* the wall. An episode with no deadline of its own has no "two days
+before" to count to, so last week's holds until the schedule lands.
 
-It is the one panel that reads the **device** clock rather than the server's, and
-`pickWall`'s header is explicit about why that is allowed here: it chooses
-between two sets of picks the server has already published, so a wrong clock
-shifts the changeover and can never reveal a pick early. Once the next episode's
-`predictions_public` is true, that wins regardless.
+**The results grid and the leaderboard's week column hold on too, until the
+next deadline itself** — `pickShown`, beside `pickWall`. Between marking a week
+complete and the next episode's 18:00 deadline:
+
+- the results grid shows **two boxes**: `Last episode · 1` with its results and
+  the Finished pill, then `Episode 2` with blank cells and the new bingo prompt;
+- the leaderboard's week column and movement arrows stay on the finished week.
+  The column says `+7 in ep 1` rather than "this week", because `/play` is
+  already taking episode 2's picks.
+
+At the deadline the Last episode box goes and both move on. The deadline and not
+the air time, on purpose: a −2 for lateness can only land after 18:00, on the
+new episode's row, so switching then keeps the week column and the total moving
+together. The header, the 4s poll and `/play` stay on the real current episode
+throughout — `pickCurrent` is untouched, so the two copies of it still agree.
+
+A typical week, episode 1 → 2: GM marks 1 complete → two results boxes, wall and
+table still on 1 · two days before ep 2's deadline → sealed ep 2 wall · 18:00
+deadline → Last episode box gone, week column on ep 2 · 20:00 → reveal.
+
+These two are the only things on the page that read the **device** clock rather
+than the server's, and their headers are explicit about why that is allowed
+here: each chooses between two episodes whose data the server has already
+published, so a wrong clock shifts the changeover and can never reveal anything
+early. Once the next episode's `predictions_public` is true, that wins
+regardless for the wall. A `deadline_passed` column on `v_episodes_public` would
+take the device out of it, and was turned down as a SQL paste and a smoke test
+for a display-only timing.
 
 ### What phase 5 does not cover
 

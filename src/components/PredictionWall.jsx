@@ -43,7 +43,7 @@ import { HowToRead, Note } from './HowToRead.jsx'
  * its own, and colour never does that (DESIGN §5).
  *
  * `episode` IS NOT ALWAYS THE CURRENT ONE. A week marked complete keeps its
- * wall until the day before the next deadline (pickWall, src/lib/dashboard.js),
+ * wall until two days before the next deadline (pickWall, src/lib/dashboard.js),
  * and `nextEpisode` is set for exactly those days.
  */
 export function PredictionWall({
@@ -76,13 +76,13 @@ export function PredictionWall({
 
   return (
     <Panel head={head}>
-      {/* Said in words, not left to the number in the band: everything above
-          this panel has already moved on to the next episode, so a wall that
-          hasn't needs to say so where the eye lands. */}
+      {/* Said in words, not left to the number in the band: the header and the
+          current results box above have already moved on to the next episode,
+          so a wall that hasn't needs to say so where the eye lands. */}
       {nextEpisode && (
         <p className="notice">
           These are everyone&rsquo;s picks for Episode {episode.number} (which is
-          now finished). They will come down the day before
+          now finished). They will come down two days before the deadline for
           episode {nextEpisode.number}.
         </p>
       )}
@@ -183,7 +183,7 @@ export function PredictionWall({
  * an empty saved card is the same as never opening the panel — so the two agree
  * without this having to know the rule.
  *
- * When this panel is on screen is decided by pickWall: from a day before the
+ * When this panel is on screen is decided by pickWall: from two days before the
  * deadline until the episode airs, plus the whole run-up to episode 1. The rest
  * of the week the slot holds last week's revealed wall.
  */

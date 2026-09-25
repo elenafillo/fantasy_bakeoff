@@ -48,6 +48,7 @@ export function Leaderboard({ standings, scores, episode, states, onCycle, movem
             row={row}
             joint={jointAt.has(row.position)}
             week={scores.find((s) => s.player_id === row.player_id && s.episode_id === episode?.id) ?? null}
+            episodeNumber={episode?.number ?? null}
             movement={movement[row.player_id] ?? null}
             state={states[row.player_id] ?? 'muted'}
             onCycle={onCycle}
@@ -70,9 +71,10 @@ export function Leaderboard({ standings, scores, episode, states, onCycle, movem
         <Note term={<span className="howto-dash" />}>
           That player&rsquo;s colour, and the line on the chart below. 
         </Note>
-        <Note term="+7 this week">
-          Points earned in this episode so far, penalties included.
-          <em> No entry</em> means they submitted nothing this week.
+        <Note term="+7 in ep 1">
+          Points earned in that episode so far, penalties included. It stays on
+          the episode just finished until the next one&rsquo;s deadline.
+          <em> No entry</em> means they submitted nothing for it.
         </Note>
         <Note term="Tapping a row">
           Highlight, mute or hide that player&rsquo;s chart line.
@@ -82,7 +84,10 @@ export function Leaderboard({ standings, scores, episode, states, onCycle, movem
   )
 }
 
-function Row({ row, joint, week, movement, state, onCycle, isMe }) {
+// The episode is named rather than called "this week": for the days between a
+// week being marked complete and the next deadline, the column is about the
+// week just finished while /play is already taking the next one's picks.
+function Row({ row, joint, week, episodeNumber, movement, state, onCycle, isMe }) {
   const pops = usePopKey(row.total_points)
   const place = positionLabel(row.position, joint)
 
@@ -126,7 +131,7 @@ function Row({ row, joint, week, movement, state, onCycle, isMe }) {
           {row.total_points}
         </span>
         <span className="lb-week small muted">
-          {week ? `${signed(week.points)} this week` : 'no entry'}
+          {week ? `${signed(week.points)} in ep ${episodeNumber}` : 'no entry'}
         </span>
       </span>
     </button>

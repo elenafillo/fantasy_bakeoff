@@ -61,8 +61,8 @@ export function categoriesFor(categories, episode) {
 
 /**
  * Which episode's picks the wall shows. Usually the current one — but a week
- * that has just been marked complete keeps its wall until a day before the next
- * episode's deadline.
+ * that has just been marked complete keeps its wall until two days before the
+ * next episode's deadline.
  *
  * Dashboard-only, and not a copy of anything in api/: /play has no wall. It
  * exists because marking an episode complete is what moves everyone on
@@ -85,15 +85,47 @@ export function pickWall(episodes, currentEpisode, now) {
   const previous = episodes.find((e) => e.number === currentEpisode.number - 1)
   if (!previous?.predictions_public) return currentEpisode
 
-  // No deadline on the next one means no "day before" to count to yet, so last
-  // week's stays up until the schedule says otherwise.
+  // No deadline on the next one means no "two days before" to count to yet, so
+  // last week's stays up until the schedule says otherwise.
   if (!currentEpisode.deadline_at) return previous
-  return now < new Date(currentEpisode.deadline_at).getTime() - ONE_DAY_MS
+  return now < new Date(currentEpisode.deadline_at).getTime() - SEAL_LEAD_MS
     ? previous
     : currentEpisode
 }
 
-const ONE_DAY_MS = 24 * 60 * 60 * 1000
+// How long before the deadline the wall hands over to the sealed panel, whose
+// countdown and "still missing" list are the league's only nudge to submit.
+const SEAL_LEAD_MS = 2 * 24 * 60 * 60 * 1000
+
+/**
+ * Which episode the leaderboard's week column and movement arrows are about,
+ * and whether the results grid keeps a "Last episode" box above the current
+ * one. The week just marked complete, until the next episode's DEADLINE; the
+ * current one from then on.
+ *
+ * Why not the moment of marking complete: that is what moves /play on so next
+ * week's picks can open (pickCurrent), and it usually happens minutes after the
+ * results are typed in — before most of the league has seen who climbed. Why
+ * the deadline and not the air time: a −2 for lateness can only land after the
+ * deadline, on the new episode's row, so switching then keeps the week column
+ * and the total moving together.
+ *
+ * Reads the device clock, on the same terms as pickWall: it only chooses
+ * between episodes whose results and points are already public, so a wrong
+ * clock moves the changeover and can never reveal anything.
+ */
+export function pickShown(episodes, currentEpisode, now) {
+  // Before episode 1 there is nothing to hold on to; once the final is marked
+  // complete pickCurrent returns the final itself, and the semi is not "last".
+  if (!currentEpisode || currentEpisode.status === 'complete') return currentEpisode
+
+  const previous = episodes.find((e) => e.number === currentEpisode.number - 1)
+  if (!previous) return currentEpisode
+
+  // No deadline yet: last week holds until the schedule lands, as the wall does.
+  if (!currentEpisode.deadline_at) return previous
+  return now < new Date(currentEpisode.deadline_at).getTime() ? previous : currentEpisode
+}
 
 // ------------------------------------------------------------
 // Which league
@@ -244,7 +276,9 @@ export async function fetchLive(league) {
   // Picked here rather than in render because it reads the clock, and a
   // component body must not. Re-picked on every poll, so the wall changes over
   // within one interval of the moment.
-  const wallEpisode = pickWall(episodes, currentEpisode, Date.now())
+  const now = Date.now()
+  const wallEpisode = pickWall(episodes, currentEpisode, now)
+  const shownEpisode = pickShown(episodes, currentEpisode, now)
   const ids = standings.map((r) => r.player_id)
   const inLeague = `in.(${ids.join(',')})`
 
@@ -324,7 +358,7 @@ export async function fetchLive(league) {
   ])
 
   return {
-    episodes, currentEpisode, wallEpisode, standings, results, scores, predictions, topPicks, guesses,
+    episodes, currentEpisode, wallEpisode, shownEpisode, standings, results, scores, predictions, topPicks, guesses,
     leavingPicks,
   }
 }

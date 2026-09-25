@@ -114,8 +114,11 @@ export default function Dashboard({ slug }) {
   const cycle = (id) =>
     setLines((prev) => ({ ...prev, [id]: NEXT[prev?.[id] ?? 'muted'] }))
 
+  // Against the shown episode, not the current one: for the days between
+  // marking a week complete and the next deadline, "since last week" means
+  // since before the week just finished (pickShown).
   const movement = useMemo(() => {
-    if (!live?.currentEpisode) return {}
+    if (!live?.shownEpisode) return {}
     return Object.fromEntries(
       live.standings.map((row) => [
         row.player_id,
@@ -123,7 +126,7 @@ export default function Dashboard({ slug }) {
           table: live.standings,
           perEpisode: live.scores,
           playerId: row.player_id,
-          episodeNumber: live.currentEpisode.number,
+          episodeNumber: live.shownEpisode.number,
         }),
       ])
     )
@@ -199,6 +202,10 @@ export default function Dashboard({ slug }) {
   const episode = live.currentEpisode
   const categories = categoriesFor(reference.categories, episode)
   const thisWeek = live.results.filter((r) => r.episode_id === episode?.id)
+  // The week just marked complete, until the next deadline (pickShown). It
+  // keeps a results box of its own and owns the leaderboard's week column.
+  const shown = live.shownEpisode
+  const last = shown && shown.id !== episode?.id ? shown : null
   const hasBonus = live.standings.some((r) => r.bonus_points !== 0)
 
   // Usually the same episode. For a few days after one is marked complete the
@@ -238,7 +245,7 @@ export default function Dashboard({ slug }) {
       <Leaderboard
         standings={live.standings}
         scores={live.scores}
-        episode={episode}
+        episode={shown}
         states={lines ?? {}}
         onCycle={cycle}
         movement={movement}
@@ -252,6 +259,17 @@ export default function Dashboard({ slug }) {
         onCycle={cycle}
         hasBonus={hasBonus}
       />
+
+      {/* Last week first: it is where the news is, and the box goes at the
+          next deadline, leaving the current one where it always sits. */}
+      {last && (
+        <ResultsGrid
+          categories={categoriesFor(reference.categories, last)}
+          results={live.results.filter((r) => r.episode_id === last.id)}
+          episode={last}
+          last
+        />
+      )}
 
       <ResultsGrid categories={categories} results={thisWeek} episode={episode} />
 

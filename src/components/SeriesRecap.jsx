@@ -7,8 +7,9 @@ import { nameList, verdictFor } from '../lib/scores.js'
  *
  * It earns its place by covering a real gap rather than by being decorative:
  * the results grid follows the same "lowest episode not yet complete" rule as
- * /play, so the moment the GM marks an episode complete, last night's ticks
- * disappear from both. This is where they go, and it is nearly free —
+ * /play, and its "Last episode" box only holds a finished week until the next
+ * deadline (pickShown in dashboard.js). After that, last night's ticks are gone
+ * from both. This is where they go, and it is nearly free —
  * v_episode_results_public carries season_id, so the whole season already
  * arrived in the query the grid needed.
  *

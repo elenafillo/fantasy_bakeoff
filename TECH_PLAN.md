@@ -414,14 +414,18 @@ people will be watching on the sofa with their phone in hand, so this is
   table — players down, categories across — because that scales to sixteen
   players where cards don't, and because reading *down* a column is what people
   do with it. It is the one place other than the chart that scrolls sideways.
-  **It is the one panel that does not follow the current episode**: a week marked
-  complete keeps its wall until a day before the next deadline, named in the
+  **It does not follow the current episode**: a week marked
+  complete keeps its wall until two days before the next deadline, named in the
   panel's band and said in a notice above the table, because the picks are the
   thing people missed if they weren't watching live. `pickWall` in
   `src/lib/dashboard.js`; the stats built from picks trail with it.
+  The **results grid and the leaderboard's week column** trail too, on a later
+  clock: a week marked complete keeps a "Last episode" box above the current
+  one, and owns the week column and the arrows, until the next episode's
+  **deadline** (`pickShown`).
 - **Series recap** — episodes × categories, who won what. ✅ built in phase 5;
-  it is where last night's ticks live once an episode is marked complete, since
-  the results grid follows the same "current episode" rule as `/play`.
+  it is where last night's ticks live once the next deadline has passed and the
+  results grid's "Last episode" box has gone.
 - **Top Three board** — ✅ built in phase 6. Everyone's three, in standings
   order, dead picks greyed and struck rather than dropped — you are stuck with
   your three, and watching them go is most of the fun. It reads

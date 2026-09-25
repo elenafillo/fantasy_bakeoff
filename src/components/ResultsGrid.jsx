@@ -22,16 +22,21 @@ import { HowToRead, Note } from './HowToRead.jsx'
  * TECH_PLAN §5 wanted the winning baker's face here. There are no photos yet,
  * and v_episode_results_public carries the name and not photo_url, so this
  * names them. Faces are a column and a phase away.
+ *
+ * `last` marks the week just finished, which the dashboard keeps in a box of
+ * its own above the current one until the next deadline (pickShown in
+ * dashboard.js). It drops the how-to-read notes, which the box below carries.
  */
-export function ResultsGrid({ categories, results, episode }) {
+export function ResultsGrid({ categories, results, episode, last = false }) {
   if (!episode) return null
 
   // Computed in v_episodes_public from the lock time, not a status somebody had
   // to remember to set as the episode began.
   const live = episode.is_live
+  const title = `${last ? 'Last episode · ' : 'Episode '}${episode.number}`
 
   return (
-    <Panel head={`Episode ${episode.number}${episode.theme ? ` · ${episode.theme}` : ''}`}>
+    <Panel head={`${title}${episode.theme ? ` · ${episode.theme}` : ''}`}>
       <div className="resmeta">
         {live && (
           <span className="pill bad live-pulse">
@@ -44,7 +49,7 @@ export function ResultsGrid({ categories, results, episode }) {
         )}
         {episode.bingo_prompt && (
           <p className="bingo">
-            <span className="eyebrow">This week’s bingo</span>
+            <span className="eyebrow">{last ? 'Last week’s bingo' : 'This week’s bingo'}</span>
             {episode.bingo_prompt}
           </p>
         )}
@@ -68,7 +73,7 @@ export function ResultsGrid({ categories, results, episode }) {
         })}
       </div>
 
-      <HowToRead>
+      {!last && <HowToRead>
         <Note term="A name">
           The baker that won the category. Two names means it was shared, and naming either one of them scores in full.
         </Note>
@@ -84,7 +89,7 @@ export function ResultsGrid({ categories, results, episode }) {
         <Note term="Live now">
           The episode is on air, so this panel is refreshing every few seconds.
         </Note>
-      </HowToRead>
+      </HowToRead>}
     </Panel>
   )
 }
