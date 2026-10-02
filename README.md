@@ -1,53 +1,49 @@
 # Fantasy Bake Off
 
-A fantasy league for the Great British Bake Off. Players predict each week's Star
-Baker, elimination, technical winner, handshake and a GM-written bingo event;
-points land live as the episode airs.
+A fantasy league for *The Great British Bake Off*, built for a group of friends
+watching the 2026 series together.
 
-- **[HANDOFF.md](HANDOFF.md)** — **start here.** State of play, what's next, and the traps
-- **[RULES.md](RULES.md)** — how the game is played and scored
-- **[TECH_PLAN.md](TECH_PLAN.md)** — architecture, data model, build phases
-- **[DESIGN.md](DESIGN.md)** — the visual system
-- **[supabase/README.md](supabase/README.md)** — SQL run order
+**Live at [fantasy-bakeoff.vercel.app](https://fantasy-bakeoff.vercel.app/)**
 
-**Stack:** React + Vite · Supabase (Postgres) · Vercel
+Every week, before the episode airs, each player picks a baker for five
+categories: Star Baker, who leaves, the technical winner, a Hollywood handshake,
+and a "bingo" event the GM writes for that week. Points come in **live while the
+episode is on**, so the leaderboard moves as everyone watches. There are also
+season-long bets, like your final three and two guesses about bakes, and several
+leagues can run side by side on the same series.
 
-## Pages
+The full scoring rules are in [RULES.md](RULES.md).
 
-| Route | Who | What | Phase |
-|-------|-----|------|------:|
-| `/` | anyone | Dashboard — your league if you're logged in, else the default one | 5 |
-| `/play` | player | Prediction panel, two-word code login — **built** | 2 ✅ |
-| `/bakers` | anyone | The cast grid | 6 |
-| `/rules` | anyone | Short-form rules | 6 |
-| `/gm` | GM | Password-gated control room — **next** | 3 |
+**Stack:** React + Vite · Supabase (Postgres) · Vercel serverless functions
 
-## Dev
+## How it works
 
-```bash
-npm install
-npm run dev            # localhost:5173 — the whole app, including /api/*
-npm run dev -- --host  # also on the local network, for testing on a phone
-npm run lint
-npm run build
-```
+- **Players** log in with a two-word code (no accounts, no emails) and make their
+  picks at `/play`.
+- **The GM** runs things from a password-protected control room at `/gm`, setting
+  up episodes, writing the bingo prompt and entering results as they happen.
+- **Everyone** can see the dashboard at `/`, which has the leaderboard, a points
+  chart, the results grid and the wall of everyone's predictions.
 
-`npm run dev` serves `api/*.js` too, via a dev-only plugin in
-[vite.config.js](vite.config.js), so there's no second process to run. `vercel
-dev` is the more faithful runtime but crashes on Node 24 / Windows with a libuv
-assertion — use a preview deploy to cross-check instead.
+Picks are secret until the episode airs. The database enforces this, not the UI:
+every table is locked with row-level security, and the browser can only read a
+small set of views. Those views hide each episode's predictions until its
+broadcast time. All scoring is done once, in SQL, so every page shows the same
+numbers.
 
-Visit `/api/health` to confirm the environment variables are set and the service
-role key works. It reports presence only, never values.
+## Documentation
 
-## Environment
+This repo is documented in some depth. If you're going to change something,
+read these first:
 
-Copy [.env.example](.env.example) to `.env.local` (git-ignored) and fill in the
-three variables. The same three are set in the Vercel dashboard under Project →
-Settings → Environment Variables — they're configured separately, so check
-`/api/health` in both places.
+| File | What's in it |
+|---|---|
+| [RULES.md](RULES.md) | How the game is played and scored |
+| [HANDOFF.md](HANDOFF.md) | Current state, what each phase built, and known traps |
+| [TECH_PLAN.md](TECH_PLAN.md) | Architecture, data model and API |
+| [DESIGN.md](DESIGN.md) | The visual system and design tokens |
+| [supabase/README.md](supabase/README.md) | SQL run order, and why the views are the security boundary |
 
-`SUPABASE_SERVICE_ROLE_KEY` bypasses row-level security completely. It is read
-only in `api/_supabase.js` and must never be imported under `src/`. The
-publishable key in `src/lib/supabase.js` is public by design and ships in the
-bundle.
+---
+
+Build with Claude Opus 4.4/4.5. 
