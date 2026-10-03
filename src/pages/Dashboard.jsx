@@ -147,10 +147,11 @@ export default function Dashboard({ slug }) {
             standings: live.standings,
             bakerNames: reference.bakerNames,
             bakers: reference.bakers,
-            // This league's 'leaving' picks across the series. The count lives
-            // here rather than on v_baker_stats so that every card on the strip
-            // is about this league (stats.js header).
-            leavingPicks: live.leavingPicks,
+            // This league's revealed picks across the series, every category.
+            // Counted here rather than on v_baker_stats or picks_made so that
+            // every card on the strip is about this league, and so the hit rate
+            // can leave out categories nobody won (stats.js).
+            seriesPicks: live.seriesPicks,
             // The wall's week, not the page's. The two cards built from picks —
             // the favourite and the lone call — are about what is on the wall a
             // screen above, so they trail with it for the days it holds last

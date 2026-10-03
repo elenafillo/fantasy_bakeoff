@@ -5,8 +5,8 @@
 // No extra queries and no endpoint.
 //
 // NOTHING HERE IS A SCORING RULE. Every number below is either counted from
-// rows SQL already decided (v_episode_scores' points and correct_count,
-// v_public_predictions' picks) or worked out with `verdictFor` — the single
+// rows SQL already decided (v_episode_scores' points, v_public_predictions'
+// picks) or worked out with `verdictFor` — the single
 // derivation the browser is allowed, and the same one the scorecard and the
 // wall use. If a stat ever needs to know what a category is worth, or when a
 // penalty fires, it belongs in views.sql instead. See TECH_PLAN §2.
@@ -29,21 +29,25 @@ import { verdictFor, nameList } from './scores.js'
  * @returns {Array<{key, label, value, detail}>}
  */
 export function buildStats({
-  predictions, results, scores, standings, bakerNames, bakers, leavingPicks, episode,
+  predictions, results, scores, standings, bakerNames, bakers, seriesPicks, episode,
 }) {
   const names = Object.fromEntries(standings.map((p) => [p.player_id, p.display_name]))
   const live = (predictions ?? []).filter((p) => !p.is_disallowed)
   const thisWeek = (results ?? []).filter((r) => r.episode_id === episode?.id)
+  // Disallowed picks are dropped once, here, to match the `live` filter above
+  // and `en.is_disallowed is false` in the SQL: an entry the GM threw out is not
+  // an opinion the room held, nor a call anyone made.
+  const series = (seriesPicks ?? []).filter((p) => !p.is_disallowed)
 
   // Bakers first, then players. The two halves answer different questions —
   // "what is the tent doing" and "who among us is any good at reading it" —
   // and mixing them made the strip read as five unrelated facts.
   return [
     favourite(live, bakerNames),
-    writtenOff(bakers, leavingPicks),
+    writtenOff(bakers, series.filter((p) => p.category === 'leaving')),
     loneCall(live, thisWeek, names),
     biggestWeek(scores, names),
-    sharpest(scores, names),
+    sharpest(series, results ?? [], names),
   ].filter(Boolean)
 }
 
@@ -150,18 +154,13 @@ function biggestWeek(scores, names) {
  * the wrong way and a permission-boundary paste; this is a tally instead —
  * exactly the shape `favourite` above already had.
  *
- * `leavingPicks` is every 'leaving' pick in the league, across the series,
- * already scoped by fetchLive's player filter and already gated by
+ * `leavingPicks` is every allowed 'leaving' pick in the league, across the
+ * series, already scoped by fetchLive's player filter and already gated by
  * v_public_predictions. So this counts rows, and decides nothing.
  */
 function writtenOff(bakers, leavingPicks) {
   const tally = new Map()
-  // Disallowed picks are dropped here rather than in the query, to match the
-  // `live` filter in buildStats and the `not vp.is_disallowed` the SQL count
-  // used: an entry the GM threw out is not an opinion the room held.
-  for (const p of leavingPicks ?? []) {
-    if (!p.is_disallowed) tally.set(p.baker_id, (tally.get(p.baker_id) ?? 0) + 1)
-  }
+  for (const p of leavingPicks) tally.set(p.baker_id, (tally.get(p.baker_id) ?? 0) + 1)
 
   const count = (b) => tally.get(b.baker_id) ?? 0
   const survivors = (bakers ?? []).filter((b) => b.status !== 'eliminated' && count(b) > 0)
@@ -182,20 +181,42 @@ function writtenOff(bakers, leavingPicks) {
 
 // ------------------------------------------------------------
 /**
- * Best hit rate across the series. `correct_count` and `picks_made` both come
- * from v_episode_scores, so this counts rows and does not judge any of them.
+ * Best hit rate across the series, out of the picks that COULD have landed.
+ *
+ * A pick counts only once its category, that episode, has a winner — verdictFor
+ * says 'right' or 'wrong'. So a handshake pick in a week with no handshake, a
+ * bingo nobody hit, or a 'leaving' pick in a week nobody went ('nobody') is
+ * not held against anyone; nor is a category still to be decided ('pending'),
+ * which is what stops every rate dipping through the live hour as the picks
+ * are revealed before the results land. Elena's call: every category, not
+ * just bingo and the handshake — one rule, no category named in code.
+ *
+ * This used to read v_episode_scores' correct_count and picks_made, and
+ * picks_made counts every pick made. The numerator moved with the denominator,
+ * so both come from the same rows and cannot disagree. Still no scoring rule:
+ * verdictFor is the one derivation the browser is allowed, and no points are
+ * involved.
  */
-function sharpest(scores, names) {
+function sharpest(picks, results, names) {
+  const byEpisode = new Map()
+  for (const r of results) {
+    if (!byEpisode.has(r.episode_id)) byEpisode.set(r.episode_id, [])
+    byEpisode.get(r.episode_id).push(r)
+  }
+
   const totals = new Map()
-  for (const s of scores ?? []) {
-    const row = totals.get(s.player_id) ?? { correct: 0, made: 0 }
-    row.correct += s.correct_count
-    row.made += s.picks_made
-    totals.set(s.player_id, row)
+  for (const p of picks) {
+    const { state } = verdictFor(p.category, p.baker_id, byEpisode.get(p.episode_id) ?? [])
+    if (state !== 'right' && state !== 'wrong') continue
+    const row = totals.get(p.player_id) ?? { correct: 0, made: 0 }
+    row.made += 1
+    if (state === 'right') row.correct += 1
+    totals.set(p.player_id, row)
   }
 
   // One good week is luck. A full episode's worth of picks is the floor at
-  // which a percentage stops being noise.
+  // which a percentage stops being noise — counted in picks that could land,
+  // so a week with no handshake brings the card on a little later.
   const eligible = [...totals.entries()].filter(([, r]) => r.made >= 5)
   if (eligible.length === 0) return null
 
@@ -212,6 +233,6 @@ function sharpest(scores, names) {
     value: `${Math.round(top * 100)}%`,
     detail:
       nameList(who.map(([id]) => names[id] ?? 'Someone').sort()) +
-      `, ${correct} of ${made} picks`,
+      `, ${correct} of ${made} picks that could land`,
   }
 }

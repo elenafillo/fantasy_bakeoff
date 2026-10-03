@@ -1121,6 +1121,46 @@ textarea.input { resize: vertical; line-height: 1.4; }
   text-decoration: line-through;
 }
 
+/* The numbers beside the board. Under it on a phone, behind the same rule the
+   board's rows use; beside it from 56rem (below, under "Wide screens"). */
+.th-split { display: grid; gap: 1.2rem; margin-top: 1rem; }
+.th-split > .th-board { margin-top: 0; }
+.th-stats { display: grid; gap: 1.1rem; align-content: start; border-top: 2px solid var(--line); padding-top: 1rem; }
+.th-stats-head {
+  font-size: .7rem; font-weight: 800; margin: 0 0 .45rem;
+  text-transform: uppercase; letter-spacing: .05em;
+  color: var(--ink-soft);
+}
+.th-stats-none { margin: 0; }
+
+.th-mentions { list-style: none; margin: 0; padding: 0; display: grid; gap: .3rem; }
+.th-mention {
+  display: grid; grid-template-columns: minmax(0, 7.5rem) 1fr 1.6rem;
+  align-items: center; gap: .5rem;
+  font-size: .85rem;
+}
+.th-mention-name { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.th-mention-bar { height: .55rem; border-radius: 999px; background: var(--pink-bg); overflow: hidden; }
+.th-mention-bar > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+.th-mention-count { font-weight: 900; font-variant-numeric: tabular-nums; text-align: right; }
+/* Same three signals as the board's chip: struck, greyed, and a hidden word. */
+.th-mention.gone .th-mention-name { color: var(--ink-soft); text-decoration: line-through; }
+.th-mention.gone .th-mention-bar > span { background: var(--line); }
+
+.th-combos { list-style: none; margin: 0; padding: 0; display: grid; gap: .55rem; }
+.th-combo { display: grid; gap: .15rem; }
+
+.th-stillin { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; grid-template-columns: repeat(4, 1fr); }
+.th-stillin-cell {
+  display: grid; gap: .05rem; align-content: start;
+  padding: .45rem .5rem;
+  border-radius: var(--radius-sm);
+  background: var(--pink-bg);
+}
+.th-stillin-cell.empty { background: var(--card); box-shadow: 0 0 0 2px var(--line) inset; }
+.th-stillin-n { font-size: 1.25rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.th-stillin-label { font-size: .72rem; line-height: 1.25; color: var(--ink-soft); }
+
 /* ---- The bake guess (/play, /gm and the dashboard) ---- */
 
 /* The receipt on /play, once episode 1 has locked. A list rather than chips,
@@ -1277,4 +1317,12 @@ textarea.input { resize: vertical; line-height: 1.4; }
   /* Room to spare here, and these are portraits of twelve people nobody can
      tell apart yet — which is the entire problem this page exists to solve. */
   .cast-face { width: 7rem; height: 7rem; }
+}
+
+/* Laptop width and up: the top three's numbers move beside the board. Later
+   than 48rem on purpose — at tablet width the board's 10rem name column leaves
+   the chips too little room once a sidebar takes its share. */
+@media (min-width: 56rem) {
+  .th-split { grid-template-columns: minmax(0, 1fr) 19rem; gap: 1.6rem; }
+  .th-stats { border-top: none; padding-top: 0; border-left: 2px solid var(--line); padding-left: 1.4rem; }
 }

@@ -883,6 +883,17 @@ leak test for entirely the wrong reason.
 - **The GM cannot disallow a top pick.** `is_disallowed` exists and the scoring
   views filter on it, but nothing sets it and no UI offers it — Elena's call.
 
+### The numbers beside the board
+
+Added 2026-10-03: how often each baker was named, the shared threes, and how
+many players still have 3 / 2 / 1 / 0 of theirs in the tent. Beside the board
+from 56rem, under it below that. **No SQL, no query** — `src/lib/topThree.js`
+counts the rows the board already has, so it inherits the episode-2 gate and
+the league filter. A combination is listed only if **at least two people** hold
+it (Elena's call, same floor as "The favourite"), with ties for third shown
+rather than cut. Bakers nobody picked are deliberately not listed. Disallowed
+top picks are now dropped from the board and the counts, matching the SQL.
+
 ### How it was tested
 
 `smoke_test.sql` covers the SQL gate. The API was exercised by a throwaway-season
@@ -918,7 +929,7 @@ follow its week:
 | Written off | the most-predicted-to-leave baker who is still in |
 | Lone call | something exactly one person got right |
 | Biggest week | the best single episode anyone has had |
-| Sharpest eye | best hit rate across the series |
+| Sharpest eye | best hit rate across the series, out of picks that **could have landed** — a category nobody won that week (no handshake, bingo unhit, nobody went) or not yet decided is left out. Every category, by Elena's call on 2026-10-03; counted with `verdictFor` over the series' revealed picks rather than `picks_made`, which counts everything |
 
 **Bakers first, then players** — Elena's call, and it fixed a real problem: the
 two halves answer different questions ("what is the tent doing" and "who among
